@@ -1,102 +1,99 @@
 "use client";
-import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Upload, FileText, Eye, Calendar, CheckCircle, X } from 'lucide-react';
-import { cn } from "@/lib/utils";
-import { AgreementDrawer } from './AgreementDrawer';
 
-interface Agreement {
+import React, { useEffect, useRef, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { Upload, FileText, Eye, Calendar as CalendarIcon, CheckCircle, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { AgreementDrawer } from "./AgreementDrawer";
+
+/** Shape returned by GET /api/agreements (matches DB columns) */
+type AgreementRow = {
   id: string;
   vendor: string;
   title: string;
-  effectiveDate: string;
-  endDate: string;
-  autoRenew: boolean;
-  noticeDays: number;
-  status: 'active' | 'expiring' | 'expired';
-  fileName: string;
-}
-
-const mockAgreements: Agreement[] = [
-  {
-    id: '1',
-    vendor: 'Acme Software Solutions',
-    title: 'Software Licensing Agreement',
-    effectiveDate: '2024-01-15',
-    endDate: '2025-01-15',
-    autoRenew: true,
-    noticeDays: 60,
-    status: 'expiring',
-    fileName: 'acme-software-license.pdf'
-  },
-  {
-    id: '2',
-    vendor: 'CloudTech Services',
-    title: 'Cloud Infrastructure Services',
-    effectiveDate: '2023-09-01',
-    endDate: '2025-09-01',
-    autoRenew: false,
-    noticeDays: 90,
-    status: 'active',
-    fileName: 'cloudtech-infrastructure.pdf'
-  },
-  {
-    id: '3',
-    vendor: 'DataFlow Systems',
-    title: 'Data Processing Agreement',
-    effectiveDate: '2024-03-01',
-    endDate: '2026-03-01',
-    autoRenew: true,
-    noticeDays: 30,
-    status: 'active',
-    fileName: 'dataflow-processing.pdf'
-  },
-  {
-    id: '4',
-    vendor: 'SecureNet Inc.',
-    title: 'Cybersecurity Services Contract',
-    effectiveDate: '2023-11-15',
-    endDate: '2025-11-15',
-    autoRenew: true,
-    noticeDays: 45,
-    status: 'active',
-    fileName: 'securenet-cybersecurity.pdf'
-  },
-  {
-    id: '5',
-    vendor: 'TechFlow Solutions',
-    title: 'Consulting Services Agreement',
-    effectiveDate: '2024-06-01',
-    endDate: '2024-12-01',
-    autoRenew: false,
-    noticeDays: 30,
-    status: 'expired',
-    fileName: 'techflow-consulting.pdf'
-  }
-];
-
-const getStatusBadge = (status: string) => {
-  switch (status) {
-    case 'active':
-      return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Active</Badge>;
-    case 'expiring':
-      return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">Expiring</Badge>;
-    case 'expired':
-      return <Badge variant="destructive">Expired</Badge>;
-    default:
-      return <Badge variant="secondary">{status}</Badge>;
-  }
+  effective_on: string | null;
+  end_on: string | null;
+  auto_renews: boolean;
+  notice_days: number | null;
+  source_file_name: string;
 };
 
-export function Documents() {
-  const [selectedAgreement, setSelectedAgreement] = useState<Agreement | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
+function getStatusBadge(status: "active" | "expiring" | "expired") {
+  switch (status) {
+    case "active":
+      return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Active</Badge>;
+    case "expiring":
+      return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">Expiring</Badge>;
+    case "expired":
+      return <Badge variant="destructive">Expired</Badge>;
+  }
+}
 
-  const handleViewAgreement = (agreement: Agreement) => {
+function computeStatus(endISO: string | null): "active" | "expiring" | "expired" {
+  if (!endISO) return "active";
+  const end = new Date(endISO);
+  const today = new Date();
+  const diffDays = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return "expired";
+  if (diffDays <= 60) return "expiring";
+  return "active";
+}
+
+function fmt(dateISO: string | null) {
+  if (!dateISO) return "-";
+  const d = new Date(dateISO);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+async function uploadFile(file: File) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/agreements/upload", { method: "POST", body: fd });
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(msg || "Upload failed");
+  }
+  return res.json();
+}
+
+async function fetchAgreements(): Promise<AgreementRow[]> {
+  const res = await fetch("/api/agreements", { cache: "no-store" });
+  if (!res.ok) throw new Error(await res.text());
+  const { agreements } = await res.json();
+  return agreements as AgreementRow[];
+}
+
+export function Documents() {
+  const [agreements, setAgreements] = useState<AgreementRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [selectedAgreement, setSelectedAgreement] = useState<any>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        const data = await fetchAgreements();
+        setAgreements(data);
+      } catch (e: any) {
+        setError(e?.message ?? "Failed to load agreements");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const handleViewAgreement = (agreement: AgreementRow) => {
     setSelectedAgreement(agreement);
     setIsDrawerOpen(true);
   };
@@ -111,20 +108,41 @@ export function Documents() {
     setIsDragOver(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    // Handle file upload logic here
-    const files = Array.from(e.dataTransfer.files);
-    console.log('Files dropped:', files);
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type === "application/pdf");
+    if (!files.length) return;
+
+    try {
+      setBusy(true);
+      setError(null);
+      for (const f of files) await uploadFile(f);
+      const refreshed = await fetchAgreements();
+      setAgreements(refreshed);
+    } catch (e: any) {
+      setError(e?.message ?? "Upload failed");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
+  const handleChooseFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []).filter(f => f.type === "application/pdf");
+    if (!files.length) return;
+
+    try {
+      setBusy(true);
+      setError(null);
+      for (const f of files) await uploadFile(f);
+      const refreshed = await fetchAgreements();
+      setAgreements(refreshed);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (e: any) {
+      setError(e?.message ?? "Upload failed");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -132,9 +150,7 @@ export function Documents() {
       {/* Page Header */}
       <div>
         <h1 className="mb-2">Documents</h1>
-        <p className="text-muted-foreground">
-          Upload and manage your contract documents
-        </p>
+        <p className="text-muted-foreground">Upload and manage your contract documents</p>
       </div>
 
       {/* Upload Section */}
@@ -146,9 +162,8 @@ export function Documents() {
           <div
             className={cn(
               "border-2 border-dashed rounded-lg p-8 text-center transition-colors",
-              isDragOver
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-border/80"
+              isDragOver ? "border-primary bg-primary/5" : "border-border hover:border-border/80",
+              busy && "opacity-70 pointer-events-none"
             )}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -162,11 +177,26 @@ export function Documents() {
                 <p className="text-lg font-medium">Drop your PDF files here</p>
                 <p className="text-muted-foreground">or click to browse</p>
               </div>
-              <Button>Choose Files</Button>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf"
+                multiple
+                className="hidden"
+                onChange={handleChooseFiles}
+              />
+              <Button onClick={() => fileInputRef.current?.click()} disabled={busy}>
+                Choose Files
+              </Button>
+
+              {busy && <p className="text-sm text-muted-foreground">Uploading & parsing…</p>}
+              {error && <p className="text-sm text-red-600">{error}</p>}
             </div>
           </div>
         </CardContent>
       </Card>
+
       {/* Agreements Table */}
       <Card>
         <CardHeader>
@@ -174,12 +204,10 @@ export function Documents() {
             <CardTitle>Agreements</CardTitle>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm">
-                <Calendar size={16} className="mr-2" />
+                <CalendarIcon size={16} className="mr-2" />
                 Filter by Date
               </Button>
-              <Button variant="outline" size="sm">
-                Export
-              </Button>
+              <Button variant="outline" size="sm">Export</Button>
             </div>
           </div>
         </CardHeader>
@@ -198,46 +226,49 @@ export function Documents() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mockAgreements.map((agreement) => (
-                <TableRow key={agreement.id} className="hover:bg-muted/50">
-                  <TableCell className="font-medium">{agreement.vendor}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <FileText size={16} className="text-muted-foreground" />
-                      {agreement.title}
-                    </div>
-                  </TableCell>
-                  <TableCell>{formatDate(agreement.effectiveDate)}</TableCell>
-                  <TableCell>{formatDate(agreement.endDate)}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {agreement.autoRenew ? (
-                        <>
-                          <CheckCircle size={16} className="text-green-600" />
-                          <span>Yes</span>
-                        </>
-                      ) : (
-                        <>
-                          <X size={16} className="text-red-600" />
-                          <span>No</span>
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>{agreement.noticeDays} days</TableCell>
-                  <TableCell>{getStatusBadge(agreement.status)}</TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleViewAgreement(agreement)}
-                    >
-                      <Eye size={16} className="mr-2" />
-                      View
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {loading ? (
+                <TableRow><TableCell colSpan={8}>Loading…</TableCell></TableRow>
+              ) : agreements.length === 0 ? (
+                <TableRow><TableCell colSpan={8}>No agreements yet.</TableCell></TableRow>
+              ) : agreements.map((a) => {
+                  const status = computeStatus(a.end_on);
+                  return (
+                    <TableRow key={a.id} className="hover:bg-muted/50">
+                      <TableCell className="font-medium">{a.vendor}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <FileText size={16} className="text-muted-foreground" />
+                          {a.title}
+                        </div>
+                      </TableCell>
+                      <TableCell>{fmt(a.effective_on)}</TableCell>
+                      <TableCell>{fmt(a.end_on)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {a.auto_renews ? (
+                            <>
+                              <CheckCircle size={16} className="text-green-600" />
+                              <span>Yes</span>
+                            </>
+                          ) : (
+                            <>
+                              <X size={16} className="text-red-600" />
+                              <span>No</span>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>{a.notice_days ?? 0} days</TableCell>
+                      <TableCell>{getStatusBadge(status)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => handleViewAgreement(a)}>
+                          <Eye size={16} className="mr-2" />
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
             </TableBody>
           </Table>
         </CardContent>

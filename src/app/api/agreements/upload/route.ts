@@ -1,9 +1,8 @@
-import OpenAI from "openai";
-import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseServer";
-import { AgreementZ } from "@/lib/schemas";
 import { ExtractZ } from "@/lib/extractSchema";
-import { addMonths, subDays, format } from "date-fns";
+import { AgreementZ } from "@/lib/schemas";
+import { supabaseAdmin } from "@/lib/supabaseServer";
+import { addMonths, format, subDays } from "date-fns";
+import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
@@ -19,13 +18,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No file" }, { status: 400 });
     }
 
-    // 1) bytes + extract text from PDF
+    // 1) convert PDF to base64 for OpenRouter
     const bytes = Buffer.from(await file.arrayBuffer());
-    // ESM-friendly import path for pdf-parse
-    const { default: pdfParse } = await import("pdf-parse/lib/pdf-parse.js");
-    const parsed = await pdfParse(bytes).catch(() => ({ text: "" as string }));
-    const text = (parsed?.text || "").trim();
-    console.log(`Extracted ${text} from ${file.name}`);
+    const base64Pdf = bytes.toString('base64');
+    const dataUrl = `data:application/pdf;base64,${base64Pdf}`;
+    console.log(`Converted ${file.name} to base64 for OpenRouter processing`);
 
     // 2) upload original file to Supabase Storage
     const sb = supabaseAdmin();
@@ -41,15 +38,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: upErr.message }, { status: 500 });
     }
 
-    // 3) call OpenRouter (OpenAI-compatible) to extract fields as JSON
-    const client = new OpenAI({
-      apiKey: process.env.OPENROUTER_API_KEY!,
-      baseURL: "https://openrouter.ai/api/v1",
-      defaultHeaders: {
-        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
-        "X-Title": "BRM Take-Home - Renewal Calendar",
-      },
-    });
+    // 3) call OpenRouter (OpenAI-compatible) to extract fields as JSON using native PDF parsing
+    const openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
+    const openRouterHeaders = {
+      "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY!}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+      "X-Title": "BRM Take-Home - Renewal Calendar",
+    };
 
     const model = "openai/gpt-4o";
 
@@ -71,19 +67,52 @@ export async function POST(req: Request) {
       '  "renewalFrequencyMonths": number | null',
       "}",
       "If unknown, return null for dates and 0/false for numbers/booleans as appropriate.",
-      "TEXT:",
-      text.slice(0, 180_000),
     ].join("\n");
 
-    const completion = await client.chat.completions.create({
+    const openRouterPayload = {
       model,
-      response_format: { type: "json_object" }, // force JSON
+      response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
-        { role: "user", content: user },
+        { 
+          role: "user", 
+          content: [
+            { type: "text", text: user },
+            { 
+              type: "file", 
+              file: {
+                filename: file.name,
+                file_data: dataUrl
+              }
+            }
+          ]
+        },
       ],
       temperature: 0.1,
+      plugins: [
+        {
+          id: 'file-parser',
+          pdf: {
+            engine: 'native' // Use model's native PDF processing capabilities
+          },
+        },
+      ],
+    };
+
+    const response = await fetch(openRouterUrl, {
+      method: 'POST',
+      headers: openRouterHeaders,
+      body: JSON.stringify(openRouterPayload),
     });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`OpenRouter API error: ${response.status} - ${errorData.error?.message || response.statusText}`);
+    }
+
+    const completion = await response.json();
+
+    console.log("HI!")
 
     const raw = completion.choices[0]?.message?.content ?? "{}";
     console.log(`OpenRouter response: ${raw}`);

@@ -8,6 +8,7 @@ import { Separator } from './ui/separator';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Save, X, FileText, ExternalLink, Calendar, Clock } from 'lucide-react';
+import { EventType } from '@/types/calendar';
 
 interface Agreement {
   id: string;
@@ -27,7 +28,7 @@ interface CalendarEvent {
   vendor: string;
   date: string;
   type: string;
-  description: string;
+  description?: string;
 }
 
 interface AgreementDrawerProps {
@@ -45,7 +46,7 @@ export function AgreementDrawer({ isOpen, onClose, agreement, event }: Agreement
     effectiveDate: agreement?.effectiveDate || '',
     endDate: agreement?.endDate || '',
     autoRenew: agreement?.autoRenew || false,
-    noticeDays: agreement?.noticeDays || 30,
+    noticeDays: agreement?.noticeDays ?? 30,
   });
 
   const handleSave = () => {

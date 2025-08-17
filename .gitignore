@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+# Logs & misc
+*.log
+.DS_Store
+# Env
+.env
+.env.*
+# Coverage
+coverage/
+EOF

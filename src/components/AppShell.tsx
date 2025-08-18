@@ -34,6 +34,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
+import { SignOutButton } from "@/components/ui/signoutbutton";
+
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -50,6 +54,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/documents", label: "Documents", icon: FileText },
     { href: "/settings", label: "Settings", icon: Settings },
   ];
+
+  const router = useRouter();
+
+  async function handleSignOut() {
+    const supabase = supabaseBrowser();
+    await supabase.auth.signOut();
+    router.replace("/signin"); // or wherever your auth page lives
+  }
+
 
   return (
     <SidebarProvider>
@@ -121,7 +134,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       <span>Profile</span>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={(e) => {
+                        e.preventDefault(); // keeps Radix happy for keyboard + pointer
+                        handleSignOut();
+                      }}
+                    >
                       <LogOut className="mr-2 h-4 w-4" />
                       <span>Log out</span>
                     </DropdownMenuItem>

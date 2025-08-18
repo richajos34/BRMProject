@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseServer";
 import { addMonths, format, subDays } from "date-fns";
 import { NextResponse } from "next/server";
 
+
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
@@ -11,6 +12,10 @@ export async function POST(req: Request) {
   // debugger;
 
   try {
+
+    const userId = req.headers.get("x-user-id");
+    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     // 0) get file
     const form = await req.formData();
     const file = form.get("file") as File | null;
@@ -26,7 +31,7 @@ export async function POST(req: Request) {
 
     // 2) upload original file to Supabase Storage
     const sb = supabaseAdmin();
-    const path = `uploads/${Date.now()}-${file.name}`;
+    const path = `${userId}/uploads/${Date.now()}-${file.name}`;
     const { error: upErr } = await sb.storage
       .from(process.env.SUPABASE_BUCKET!)
       .upload(path, bytes, {
@@ -52,7 +57,7 @@ export async function POST(req: Request) {
     const system =
       "You are a contracts extraction assistant. Output ONLY strict JSON that matches the user schema.";
 
-    const user = [
+    const userPrompt = [
       "Extract renewal and notice details from this purchase agreement.",
       "Return ONLY JSON with these fields:",
       "{",
@@ -74,12 +79,12 @@ export async function POST(req: Request) {
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
-        { 
-          role: "user", 
+        {
+          role: "user",
           content: [
-            { type: "text", text: user },
-            { 
-              type: "file", 
+            { type: "text", text: userPrompt },
+            {
+              type: "file",
               file: {
                 filename: file.name,
                 file_data: dataUrl
@@ -150,15 +155,16 @@ export async function POST(req: Request) {
       a.endDate ??
       (a.effectiveDate && a.termLengthMonths > 0
         ? format(
-            subDays(
-              addMonths(new Date(a.effectiveDate), a.termLengthMonths),
-              1
-            ),
-            "yyyy-MM-dd"
-          )
+          subDays(
+            addMonths(new Date(a.effectiveDate), a.termLengthMonths),
+            1
+          ),
+          "yyyy-MM-dd"
+        )
         : null);
 
     // 7) insert agreement
+    console.log("Inserting agreement:", userId);
     const { data: inserted, error } = await sb
       .from("agreements")
       .insert({
@@ -175,6 +181,7 @@ export async function POST(req: Request) {
         source_file_path: a.sourceFilePath,
         model_name: a.modelName,
         parse_status: "parsed",
+        user_id: userId,
       })
       .select("*")
       .single();
@@ -221,9 +228,6 @@ export async function POST(req: Request) {
       }
     }
 
-    if (kd.length) {
-      await sb.from("key_dates").insert(kd);
-    }
 
     return NextResponse.json({ agreement: inserted });
   } catch (e: any) {

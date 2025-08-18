@@ -8,6 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Upload, FileText, Eye, Calendar as CalendarIcon, CheckCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AgreementDrawer } from "./AgreementDrawer";
+import { authedFetch } from "@/lib/authedFetch"; // <-- add this
+import { getUserIdClient } from "@/lib/getUserClient";
 
 /** Shape returned by GET /api/agreements (matches DB columns) */
 type AgreementRow = {
@@ -50,18 +52,31 @@ function fmt(dateISO: string | null) {
 }
 
 async function uploadFile(file: File) {
+  const userId = await getUserIdClient();
+  if (!userId) throw new Error("Not signed in");
+
   const fd = new FormData();
   fd.append("file", file);
-  const res = await fetch("/api/agreements/upload", { method: "POST", body: fd });
-  if (!res.ok) {
-    const msg = await res.text();
-    throw new Error(msg || "Upload failed");
-  }
+
+  const res = await fetch("/api/agreements/upload", {
+    method: "POST",
+    body: fd,
+    headers: { "x-user-id": userId },
+  });
+
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 async function fetchAgreements(): Promise<AgreementRow[]> {
-  const res = await fetch("/api/agreements", { cache: "no-store" });
+  const userId = await getUserIdClient();
+  if (!userId) throw new Error("Not signed in");
+
+  const res = await fetch("/api/agreements", {
+    cache: "no-store",
+    headers: { "x-user-id": userId },
+  });
+
   if (!res.ok) throw new Error(await res.text());
   const { agreements } = await res.json();
   return agreements as AgreementRow[];

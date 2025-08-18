@@ -5,6 +5,7 @@ import { Button } from "./ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getUserIdClient } from "@/lib/getUserClient"; // <-- add this
 import { AgreementDrawer } from "@/components/AgreementDrawer";
 import {
   Table,
@@ -196,7 +197,15 @@ export function Calendar() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/agreements", { cache: "no-store" });
+
+        const userId = await getUserIdClient();
+        console.log("Loading agreements for user:", userId);
+        if (!userId) throw new Error("Not signed in");
+
+        const res = await fetch("/api/agreements", {
+          cache: "no-store",
+          headers: { "x-user-id": userId },
+        });
         const json = await res.json();
         if (!res.ok) {
           throw new Error(json?.error || "Failed to load agreements");
@@ -231,8 +240,8 @@ export function Calendar() {
   for (let d = 1; d <= daysInMonth; d++) days.push(d);
 
   const monthNames = [
-    "January","February","March","April","May","June",
-    "July","August","September","October","November","December",
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
   ];
 
   const goToPreviousMonth = () => setCurrentDate(new Date(year, month - 1, 1));
@@ -300,7 +309,7 @@ export function Calendar() {
           {error && <div className="text-sm text-red-600">{error}</div>}
           <div className="grid grid-cols-7 gap-1">
             {/* Day headers */}
-            {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d) => (
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
               <div key={d} className="p-3 text-center text-sm text-muted-foreground font-medium">
                 {d}
               </div>
@@ -397,8 +406,8 @@ export function Calendar() {
                       {e.type === "notice"
                         ? "Notice"
                         : e.type === "renewal"
-                        ? "Renewal"
-                        : "Term End"}
+                          ? "Renewal"
+                          : "Term End"}
                     </Badge>
                   </TableCell>
                   <TableCell>{e.vendor}</TableCell>

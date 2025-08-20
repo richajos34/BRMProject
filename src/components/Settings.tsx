@@ -13,9 +13,39 @@ import { Bell, Mail, Smartphone, Clock, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { getUserIdClient } from "@/lib/getUserClient";
 
+
+/**
+ * Settings Component
+ *
+ * Provides the user interface for configuring notification preferences and reminder schedules.
+ *
+ * State managed:
+ * - `emailReminders`, `smsReminders`, `pushNotifications`: toggles for each notification channel.
+ * - `defaultReminders`: list of default reminder offsets (days before deadline, type, enabled flag).
+ * - `notifEmail`: primary notification email address.
+ * - `ccEmails`: comma-separated list of additional recipients.
+ * - `newReminderDays`, `newReminderType`: input values for creating a new reminder.
+ * - `loading`, `saving`: control fetch/save states.
+ *
+ * Key Functions:
+ * - `useEffect`: loads current settings from `/api/settings` on mount.
+ * - `handleSaveSettings()`: persists settings back to the API.
+ * - `handleAddReminder()`: appends a new reminder to the defaults list.
+ * - `handleRemoveReminder(id)`: deletes a reminder from the list.
+ * - `handleToggleReminder(id)`: enables/disables a reminder.
+ * - `getNotificationIcon(type)`, `getNotificationLabel(type)`: map reminder type → UI label/icon.
+ *
+ * Returns:
+ * - A page with multiple cards:
+ *   1. **Notification Preferences**: toggles for Email, SMS, Push.
+ *   2. **Default Reminder Offsets**: list of reminders, plus “Add Reminder” form.
+ *   3. **Email Settings**: main notification email + CC list.
+ * - Save button persists all settings.
+ */
+
 type ReminderType = "email" | "sms" | "push";
 interface NotificationSetting {
-  id?: string;                // local id (not required for save because we replace)
+  id?: string; 
   type: ReminderType;
   days: number;
   enabled: boolean;
@@ -111,7 +141,6 @@ export function Settings() {
     }
   };
 
-  // --- add/remove/toggle reminders (local state) ---
   const handleAddReminder = () => {
     const n = parseInt(newReminderDays, 10);
     if (!n || n <= 0) {
@@ -162,7 +191,6 @@ export function Settings() {
         <p className="text-muted-foreground">Configure your notification preferences and default reminder settings</p>
       </div>
 
-      {/* Notification Preferences */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -216,7 +244,6 @@ export function Settings() {
         </CardContent>
       </Card>
 
-      {/* Default Reminder Settings */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -282,7 +309,6 @@ export function Settings() {
         </CardContent>
       </Card>
 
-      {/* Email Settings */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

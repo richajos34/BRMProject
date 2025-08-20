@@ -7,6 +7,35 @@ import { Button } from "./ui/button";
 import { Calendar as CalIcon, AlertTriangle, CheckCircle, Clock } from "lucide-react";
 import { getUserIdClient } from "@/lib/getUserClient";
 
+/**
+ * Dashboard Component
+ *
+ * Displays a comprehensive overview of upcoming contract deadlines including
+ * renewals, notice periods, and terminations. Fetches agreements for the
+ * current user, calculates key milestone dates, and renders them in a
+ * structured timeline with vendor summaries.
+ *
+ * Features:
+ * - Fetches agreements via `/api/agreements` using the authenticated user’s ID.
+ * - Computes upcoming deadlines (renewals, notices, terminations) with
+ *   days-until counters.
+ * - Groups items into time horizons (Today, 30, 60, 90 days).
+ * - Exports deadlines as an `.ics` calendar file for external use.
+ * - Displays vendor summary cards with active contract counts and next deadlines.
+ *
+ * Internal Helpers:
+ * - `toISO`, `parseISO`, `addMonths`, `diffInDays`: lightweight date utilities.
+ * - `TypeIcon`, `CuteDate`: small UI helpers for visualizing event type & date.
+ *
+ * State:
+ * - `items`: computed deadline items for display.
+ * - `vendors`: summary by vendor with counts and next deadlines.
+ * - `loading` / `err`: data-fetching status.
+ *
+ * Returns:
+ * - Full dashboard UI with sections for Today, 30/60/90 days out, and Vendor summary.
+ */
+
 type AgreementRow = {
   id: string;
   vendor: string;
@@ -35,14 +64,23 @@ type VendorRow = { name: string; activeContracts: number; nextDeadline: string |
 // ---------- tiny date utils ----------
 const toISO = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const parseISO = (s: string) => { const [y,m,d]=s.split("-").map(Number); return new Date(y,(m||1)-1,d||1); };
-const addMonths = (dt: Date, n: number) => { const d=new Date(dt); const day=d.getDate(); d.setMonth(d.getMonth()+n); if (d.getDate()!==day){} return d; };
+
+const parseISO = (s: string) => {
+  const [y,m,d]=s.split("-").map(Number); 
+  return new Date(y,(m||1)-1,d||1); 
+};
+
+const addMonths = (dt: Date, n: number) => {
+  const d=new Date(dt); const day=d.getDate();
+  d.setMonth(d.getMonth()+n);
+  if (d.getDate()!==day){} return d; 
+};
+
 const diffInDays = (future: Date, base: Date) => {
   const A = new Date(future.getFullYear(), future.getMonth(), future.getDate());
   const B = new Date(base.getFullYear(), base.getMonth(), base.getDate());
   return Math.round((A.getTime() - B.getTime()) / (24 * 60 * 60 * 1000));
 };
-// -------------------------------------
 
 const TypeIcon = ({ t }: { t: Item["type"] }) =>
   t === "notice" ? <AlertTriangle className="h-4 w-4 text-purple-600" /> :
@@ -81,7 +119,6 @@ export function Dashboard() {
         const today = new Date();
         const out: Item[] = [];
 
-        // Build agenda items from agreements
         for (const a of agreements) {
           if (!a.end_on) continue;
           const end = parseISO(a.end_on);
@@ -90,7 +127,6 @@ export function Dashboard() {
           const notice = a.notice_days ?? 0;
 
           if (auto) {
-            // next renewal >= today
             let next = new Date(end);
             let guard = 0;
             while (next < today && guard < 120) { next = addMonths(next, freq); guard++; }
@@ -143,7 +179,6 @@ export function Dashboard() {
         out.sort((a,b)=>a.daysUntil-b.daysUntil || (a.date<b.date?-1:1));
         setItems(out);
 
-        // Vendors summary (bottom grid)
         const vMap = new Map<string, VendorRow>();
         out.forEach(it => {
           const curr = vMap.get(it.vendor) || { name: it.vendor, activeContracts: 0, nextDeadline: null };
@@ -160,19 +195,16 @@ export function Dashboard() {
     })();
   }, []);
 
-  // Groups
   const today = useMemo(()=>items.filter(i=>i.daysUntil===0),[items]);
   const out30 = useMemo(()=>items.filter(i=>i.daysUntil>0 && i.daysUntil<=30),[items]);
   const out60 = useMemo(()=>items.filter(i=>i.daysUntil>30 && i.daysUntil<=60),[items]);
   const out90 = useMemo(()=>items.filter(i=>i.daysUntil>60),[items]);
 
-  // Client-side ICS export (12-month horizon)
   async function exportICS() {
     const horizonMonths = 12;
     const today = new Date();
     const horizon = new Date(today); horizon.setMonth(horizon.getMonth()+horizonMonths);
 
-    // fetch agreements again quickly (ensures ICS includes everything)
     const userId = await getUserIdClient();
     const res = await fetch("/api/agreements", { headers: { "x-user-id": userId! }, cache: "no-store" });
     const json = await res.json();
@@ -271,7 +303,6 @@ export function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="mb-1 text-2xl font-semibold">Renewals</h1>
@@ -286,7 +317,6 @@ export function Dashboard() {
       {err && <div className="text-sm text-red-600">{err}</div>}
       {loading && <div className="text-sm text-muted-foreground">Loading…</div>}
 
-      {/* Agenda groups */}
       <div className="space-y-8">
         <Section title="Today" rows={today} />
         <Section title="30 days out" rows={out30} />
@@ -294,7 +324,6 @@ export function Dashboard() {
         <Section title="90 days out" rows={out90} />
       </div>
 
-      {/* Vendors at a Glance */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">Vendors</h2>

@@ -1,10 +1,14 @@
+/**
+ * SignInPage.tsx
+ *
+ * Client-side page for user authentication.
+ * Provides sign-in via Google OAuth or email/password using Supabase.
+ */
+
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
-
-// If you're using shadcn/ui:
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
 export default function SignUpPage() {
-  const router = useRouter();
   const supabase = supabaseBrowser();
 
   const [pending, startTransition] = useTransition();
@@ -27,6 +30,10 @@ export default function SignUpPage() {
     ? `${window.location.origin}/auth/callback`
     : undefined;
 
+  /**
+   * Handle email/password sign-up with Supabase.
+   * @param e - Form submit event (prevents default behavior).
+   */
   async function signUpWithEmail(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -47,11 +54,12 @@ export default function SignUpPage() {
         return;
       }
 
-      // If email confirmation is required, Supabase returns a user (may be null) + email sent state
       setInfo("Check your email to confirm your account.");
     });
   }
-
+  /**
+   * Handle Google OAuth sign-up with Supabase.
+   */
   async function signUpWithGoogle() {
     setError(null);
     setInfo(null);
@@ -60,8 +68,6 @@ export default function SignUpPage() {
       provider: "google",
       options: {
         redirectTo,
-        // You can ask for additional scopes if needed:
-        // scopes: "openid email profile"
       },
     });
 

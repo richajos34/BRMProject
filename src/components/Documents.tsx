@@ -11,7 +11,39 @@ import { AgreementDrawer } from "./AgreementDrawer";
 import { authedFetch } from "@/lib/authedFetch";
 import { getUserIdClient } from "@/lib/getUserClient";
 
-/** Shape returned by GET /api/agreements (matches DB columns) */
+/**
+ * Documents Component
+ *
+ * Provides full CRUD management of agreement documents including upload,
+ * duplicate detection, inline editing, deletion, and detail viewing.
+ * 
+ * Features:
+ * - Fetches agreements for the authenticated user from `/api/agreements`.
+ * - Supports drag-and-drop and manual file upload (PDF only).
+ * - Detects duplicate filenames and prompts user with options
+ *   (edit existing, cancel, or re-upload with new name).
+ * - Allows editing of agreement metadata (dates, vendor, title, renewal terms).
+ * - Displays agreements in a table with status badges, file actions, and edit/delete controls.
+ * - Provides inline viewers (`AgreementDrawer`, `SlideOver`) and confirmation modals (`Modal`).
+ *
+ * Internal helpers:
+ * - `computeStatus`, `fmt`: calculate contract status and format dates.
+ * - `basename`, `splitExt`, `ensureUniqueFilename`: file name handling utilities.
+ * - `fetchAgreements`: encapsulates API call for agreement list.
+ *
+ * State:
+ * - `agreements`: loaded agreements from backend.
+ * - `selectedAgreement`, `isDrawerOpen`: for viewing agreement details.
+ * - `editAgreement`, `editForm`, `editOpen`: editing flow state.
+ * - `dupOpen`, `dupOf`, `pendingUploadRef`: duplicate file detection flow.
+ * - `deleteOpen`, `deleteTarget`, `deleting`: deletion confirmation state.
+ * - `busy`, `loading`, `error`: UI state during network/file operations.
+ *
+ * Returns:
+ * - Upload UI, agreements table, detail/edit drawers, duplicate detection modal,
+ *   and delete confirmation modal.
+ */
+
 type AgreementRow = {
   id: string;
   vendor: string;
@@ -53,7 +85,7 @@ function fmt(dateISO: string | null) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-/* ---------- filename / path helpers ---------- */
+//filename + path helpers 
 function basename(path?: string | null): string {
   if (!path) return "";
   try {
@@ -81,7 +113,6 @@ function ensureUniqueFilename(originalName: string, takenNames: string[]): strin
   }
 }
 
-/* ---------- data fetch ---------- */
 async function fetchAgreements(): Promise<AgreementRow[]> {
   const userId = await getUserIdClient();
   if (!userId) throw new Error("Not signed in");
@@ -96,7 +127,6 @@ async function fetchAgreements(): Promise<AgreementRow[]> {
   return agreements as AgreementRow[];
 }
 
-/* ---------- light modal + slide-over ---------- */
 function Modal({
   open, onClose, children, title,
 }: { open: boolean; onClose: () => void; children: React.ReactNode; title: string; }) {
@@ -145,12 +175,8 @@ export function Documents() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // view drawer
   const [selectedAgreement, setSelectedAgreement] = useState<AgreementRow | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-
-  // edit slide-over
   const [editAgreement, setEditAgreement] = useState<AgreementRow | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
@@ -162,18 +188,12 @@ export function Documents() {
     title: string;
     vendor: string;
   } | null>(null);
-
-  // duplicate modal
   const [dupOpen, setDupOpen] = useState(false);
   const [dupOf, setDupOf] = useState<AgreementRow | null>(null);
   const pendingUploadRef = useRef<File | null>(null);
-
-  // delete modal
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AgreementRow | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  // drag
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -191,7 +211,6 @@ export function Documents() {
     })();
   }, []);
 
-  /* ---------- actions ---------- */
   const refresh = async () => {
     const data = await fetchAgreements();
     setAgreements(data);
@@ -238,7 +257,6 @@ export function Documents() {
     }
   };
 
-  // DELETE flow
   const askDelete = (a: AgreementRow) => {
     setDeleteTarget(a);
     setDeleteOpen(true);
@@ -263,7 +281,6 @@ export function Documents() {
     }
   };
 
-  // duplicate gate: compare **file name** with existing names / basenames
   const handleUploadWithDuplicateGate = async (file: File) => {
     const existingBasenames = agreements.map(a => basename(a.source_file_path)).filter(Boolean);
     const existingNames = agreements.map(a => a.source_file_name || basename(a.source_file_path)).filter(Boolean);
@@ -288,7 +305,6 @@ export function Documents() {
     await actuallyUpload(file);
   };
 
-  // always ensure unique filename on wire by overriding FormData filename
   const actuallyUpload = async (file: File) => {
     const userId = await getUserIdClient();
     if (!userId) throw new Error("Not signed in");
@@ -318,7 +334,7 @@ export function Documents() {
     if (!file) return;
     try {
       setBusy(true);
-      await actuallyUpload(file); // will auto-append (1) if needed
+      await actuallyUpload(file);
       await refresh();
     } catch (e: any) {
       alert(e?.message || "Upload failed");
@@ -424,7 +440,6 @@ export function Documents() {
         </CardContent>
       </Card>
 
-      {/* Agreements Table */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -516,13 +531,11 @@ export function Documents() {
         </CardContent>
       </Card>
 
-      {/* View Drawer (use your AgreementDrawer) */}
       <AgreementDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
       />
 
-      {/* Edit Slide-over */}
       <SlideOver open={editOpen} onClose={() => setEditOpen(false)} title="Edit agreement">
         {editForm && (
           <form
@@ -604,7 +617,6 @@ export function Documents() {
         )}
       </SlideOver>
 
-      {/* Duplicate Modal */}
       <Modal
         open={dupOpen}
         onClose={() => {
@@ -651,7 +663,6 @@ export function Documents() {
         </div>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
       <Modal
         open={deleteOpen}
         onClose={deleting ? () => {} : cancelDelete}

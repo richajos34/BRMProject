@@ -37,8 +37,24 @@ import {
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
-import { SignOutButton } from "@/components/ui/signoutbutton";
 
+/**
+ * AppShell Layout Component
+ *
+ * Provides the main application shell with a persistent sidebar, top navigation,
+ * and dynamic content area. Handles global layout, theme toggling, and user
+ * authentication actions.
+ *
+ * Features:
+ * - Sidebar navigation with active route highlighting for Dashboard, Calendar,
+ *   Documents, Teams, and Settings.
+ * - Top header with dark/light theme toggle and user account dropdown.
+ * - Avatar dropdown for accessing Profile and logging out (via Supabase).
+ * - Wraps page content inside a consistent shell structure with header and sidebar.
+ *
+ * Props:
+ *  - children (React.ReactNode): The page-specific content rendered inside the layout.
+ */
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -62,15 +78,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   async function handleSignOut() {
     const supabase = supabaseBrowser();
     await supabase.auth.signOut();
-    router.replace("/signin"); // or wherever your auth page lives
+    router.replace("/signin");
   }
 
 
   return (
     <SidebarProvider>
-      {/* Make sidebar + content sit side-by-side and fill height */}
       <div className="flex min-h-screen w-full">
-        {/* Left rail */}
         <Sidebar className="border-r border-border">
           <SidebarHeader className="p-6 border-b border-border">
             <h1 className="font-medium text-lg">ContractHub</h1>
@@ -102,9 +116,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </SidebarContent>
         </Sidebar>
 
-        {/* Everything that should appear next to the sidebar */}
         <SidebarInset className="flex w-full flex-col">
-          {/* Top bar */}
           <header className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="flex h-16 items-center justify-between px-6">
               <div className="flex items-center gap-4">
@@ -138,7 +150,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onSelect={(e) => {
-                        e.preventDefault(); // keeps Radix happy for keyboard + pointer
+                        e.preventDefault();
                         handleSignOut();
                       }}
                     >
@@ -150,8 +162,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           </header>
-
-          {/* Page content */}
           <main className="flex-1 p-6 overflow-auto">{children}</main>
         </SidebarInset>
       </div>

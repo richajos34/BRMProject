@@ -7,29 +7,34 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
+/**
+ * POST /api/agreements/upload
+ *
+ * Ingests a PDF, stores it in Supabase Storage, invokes OpenRouter for structured
+ * field extraction, validates/normalizes the model output, persists an Agreement,
+ * and seeds initial key dates (term end, renewal, notice).
+ *
+ * @param {Request} req - Next.js Request object. Must include header "x-user-id".
+ * @returns {Promise<NextResponse>} JSON payload with created agreement or error.
+ */
 export async function POST(req: Request) {
-  // remove this once debugging is done
-  // debugger;
-
   try {
 
     const userId = req.headers.get("x-user-id");
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // 0) get file
     const form = await req.formData();
     const file = form.get("file") as File | null;
     if (!file) {
       return NextResponse.json({ error: "No file" }, { status: 400 });
     }
 
-    // 1) convert PDF to base64 for OpenRouter
+    // Convert to base64 for model input
     const bytes = Buffer.from(await file.arrayBuffer());
     const base64Pdf = bytes.toString('base64');
     const dataUrl = `data:application/pdf;base64,${base64Pdf}`;
     console.log(`Converted ${file.name} to base64 for OpenRouter processing`);
 
-    // 2) upload original file to Supabase Storage
     const sb = supabaseAdmin();
     const path = `${userId}/uploads/${Date.now()}-${file.name}`;
     const { error: upErr } = await sb.storage
@@ -43,7 +48,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: upErr.message }, { status: 500 });
     }
 
-    // 3) call OpenRouter (OpenAI-compatible) to extract fields as JSON using native PDF parsing
+    //Call OpenRouter (OpenAI-compatible) to extract contract fields
     const openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
     const openRouterHeaders = {
       "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY!}`,
@@ -98,7 +103,7 @@ export async function POST(req: Request) {
         {
           id: 'file-parser',
           pdf: {
-            engine: 'native' // Use model's native PDF processing capabilities
+            engine: 'native'
           },
         },
       ],
@@ -115,35 +120,25 @@ export async function POST(req: Request) {
       throw new Error(`OpenRouter API error: ${response.status} - ${errorData.error?.message || response.statusText}`);
     }
 
+    //Validate model output with ExtractZ; normalize fields for DB
     const completion = await response.json();
-
-    console.log("HI!")
-
     const raw = completion.choices[0]?.message?.content ?? "{}";
-    console.log(`OpenRouter response: ${raw}`);
-
-    // 4) validate JSON with your Zod ExtractZ
     const extracted = ExtractZ.parse(JSON.parse(raw));
-
-    // 5) map to DB payload and validate with AgreementZ
     const autoRenews = !!extracted.autoRenews;
 
-    // Model may send either camelCase or snake_case; support both
     const modelFreq =
       (extracted as any).renewalFrequencyMonths ??
       (extracted as any).renewal_frequency_months;
 
+    // If auto-renew is enabled, default to 12 months when model is silent/invalid.
     let finalRenewalFreq: number | null;
     if (autoRenews) {
-      // If it auto-renews, use model value when valid; otherwise default to 12
       const n = typeof modelFreq === "number" && Number.isFinite(modelFreq) ? modelFreq : null;
       finalRenewalFreq = n && n > 0 ? n : 12;
     } else {
-      // If it does NOT auto-renew, frequency must be null
-      finalRenewalFreq = null; // <-- if AgreementZ requires a number, use 0 instead
+      finalRenewalFreq = null;
     }
 
-    // 5) map to DB payload and validate with AgreementZ
     const payload = {
       vendor: extracted.vendor,
       title: extracted.agreementTitle,
@@ -153,7 +148,7 @@ export async function POST(req: Request) {
       autoRenews,
       noticeDays: extracted.noticeDays ?? 0,
       explicitOptOutDate: extracted.explicitOptOutDate,
-      renewalFrequencyMonths: finalRenewalFreq,   // <-- use guarded value
+      renewalFrequencyMonths: finalRenewalFreq,
       sourceFileName: file.name,
       sourceFilePath: path,
       modelName: model,
@@ -166,9 +161,9 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    const a = parsedZ.data;
 
-    // 6) derive end date if missing: effective + term - 1 day
+    //Compute end date if absent (effective + termMonths - 1 day)
+    const a = parsedZ.data;
     const endISO =
       a.endDate ??
       (a.effectiveDate && a.termLengthMonths > 0
@@ -181,8 +176,7 @@ export async function POST(req: Request) {
         )
         : null);
 
-    // 7) insert agreement
-    console.log("Inserting agreement:", userId);
+    //Insert Agreement row
     const { data: inserted, error } = await sb
       .from("agreements")
       .insert({
@@ -208,7 +202,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 8) compute key_dates
     const kd: Array<{
       kind: string;
       occurs_on: string;
@@ -249,7 +242,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ agreement: inserted });
   } catch (e: any) {
-    // surface OpenRouter/OpenAI errors if present
     const msg =
       e?.response?.data?.error?.message ||
       e?.message ||

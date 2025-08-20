@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ContractHub
+
+ContractHub is a full-stack application for managing contracts and agreements with ease.  
+It provides teams with tools for collaboration, reminders, and streamlined workflows around agreements.
+
+---
+
+## 🚀 Features
+
+- **Authentication & Authorization**
+  - User sign-up, sign-in, and secure session management.
+  - Role-based access for team members (e.g., Owner, Admin, Member).
+
+- **Team Management**
+  - Invite and manage team members.
+  - Assign roles and track invitation status.
+  - Delete and update team members.
+
+- **Agreements**
+  - Create, update, and delete agreements.
+  - Track renewal frequency (`30/60/90 days reminders`).
+  - Daily digest and optional scheduled notifications.
+
+- **Frontend**
+  - Modern, responsive UI built with **Next.js + Tailwind CSS**.
+  - Navigation bar, landing page, marketing pages, and protected dashboard.
+
+- **Backend**
+  - Secure API routes for CRUD operations on agreements and team members.
+  - Supabase integration for database management.
+  - Validation and error handling for all endpoints.
+
+- **Notifications**
+  - Automated email reminders for contract renewals (30/60/90-day intervals).
+  - Daily digest option to summarize agreements for yourself or your team.
+
+---
+
+## 🛠 Tech Stack
+
+- **Frontend**
+  - [Next.js 14](https://nextjs.org/) (App Router, Server & Client Components)
+  - [Tailwind CSS](https://tailwindcss.com/) for styling
+  - [shadcn/ui](https://ui.shadcn.com/) for UI components
+
+- **Backend**
+  - [Next.js API Routes](https://nextjs.org/docs/app/building-your-application/routing/router-handlers)
+  - [Supabase](https://supabase.com/) (Postgres DB + Admin Client)
+  - [Node.js](https://nodejs.org/) runtime
+
+- **Other**
+  - Cron jobs for scheduled reminders
+  - TypeScript for type safety
+
+---
 
 ## Getting Started
 
-First, run the development server:
+### 1. Clone the Repository
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+### 2. Install Dependancies 
+``` npm install ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. Paste .env.local file at root
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 4. Run dev server
+Open http://localhost:3000 in your browser.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## Learn More
 
-To learn more about Next.js, take a look at the following resources:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+

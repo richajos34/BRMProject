@@ -1,9 +1,28 @@
-// src/app/api/cron/send-reminders/route.ts
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseServer";
 import { sendEmail } from "@/lib/mailer";
 
-// ---- tiny date helpers ----
+/**
+ * Daily digest emailer.
+ *
+ * Responsibilities:
+ *  - AuthN via shared "x-cron-secret" header (works for cron and ad-hoc curl).
+ *  - Fetch all user-owned agreements.
+ *  - Compute per-user digest payload (with next renewal projection).
+ *  - Send via Mailtrap (sendEmail) unless dryRun=1.
+ *  - Idempotently log sends to "email_reminders_sent".
+ *
+ * Observability:
+ *  - Structured console logs for send/skip and upsert results.
+ *
+ * Extensibility:
+ *  - Add additional columns to the emailed table without changing core flow.
+ *  - Safe to call via GET or POST; both delegate to handler().
+ */
+
+/*
+* Date helpers
+*/
 const toISO = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
     d.getDate()
@@ -19,7 +38,7 @@ const addMonths = (dt: Date, months: number) => {
   const d = new Date(dt.getTime());
   const day = d.getDate();
   d.setMonth(d.getMonth() + months);
-  if (d.getDate() !== day) { /* allow JS auto-adjust */ }
+  if (d.getDate() !== day) {}
   return d;
 };
 
@@ -44,11 +63,30 @@ type AgreementRow = {
 };
 
 export const runtime = "nodejs";
+/**
+ * GET shim for environments that trigger GET webhooks.
+ * @param req Request with x-cron-secret
+ * @returns JSON result.
+ */
 export async function GET(req: Request) { return handler(req); }
+
+/**
+ * GET shim for environments that trigger GET webhooks.
+ * @param req Request with x-cron-secret
+ * @returns JSON result.
+ */
 export async function POST(req: Request) { return handler(req); }
 
+/**
+ * Load agreements grouped by user.
+ * Build digest.
+ * Send via mailer
+ * Upsert send logs into email_reminders_sent.
+ *
+ * @param req Incoming request.
+ * @returns NextResponse JSON payload summarizing sends.
+ */
 async function handler(req: Request) {
-  // Protect with a shared secret header (works for cron or manual curl)
   const secretHeader = req.headers.get("x-cron-secret");
   if (!process.env.CRON_SECRET || secretHeader !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -56,15 +94,11 @@ async function handler(req: Request) {
 
   const sb = supabaseAdmin();
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const from = process.env.EMAIL_FROM || "ContractHub Dev <no-reply@localhost.test>";
-
-  // Optional overrides: ?dryRun=1 and ?date=YYYY-MM-DD
   const url = new URL(req.url);
   const dryRun = url.searchParams.get("dryRun") === "1";
   const asOf = url.searchParams.get("date");
   const today = asOf ? new Date(asOf) : new Date();
 
-  // Pull all agreements that belong to a user
   const { data: agreements, error: aErr } = await sb
     .from("agreements")
     .select("id,user_id,vendor,title,effective_on,end_on,auto_renews,notice_days,renewal_frequency_months")
@@ -74,7 +108,6 @@ async function handler(req: Request) {
     return NextResponse.json({ error: aErr.message }, { status: 500 });
   }
 
-  // Group by user
   const byUser = (agreements ?? []).reduce<Record<string, AgreementRow[]>>((acc, a) => {
     if (!a.user_id) return acc;
     (acc[a.user_id] ||= []).push(a);
@@ -88,7 +121,6 @@ async function handler(req: Request) {
   const results: Array<{ user_id: string; to?: string; sent: number }> = [];
 
   for (const [user_id, rows] of Object.entries(byUser)) {
-    // Get recipient email via Admin API (service role)
     const { data: ures, error: uerr } = await sb.auth.admin.getUserById(user_id);
     if (uerr || !ures?.user?.email) {
       results.push({ user_id, to: undefined, sent: 0 });
@@ -96,7 +128,6 @@ async function handler(req: Request) {
     }
     const to = ures.user.email as string;
 
-    // Build email rows
     const htmlRows = rows
       .sort((a, b) => a.vendor.localeCompare(b.vendor))
       .map((a) => {
@@ -107,7 +138,7 @@ async function handler(req: Request) {
           ? new Date(a.end_on).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
           : "-";
 
-        // compute next renewal (if auto-renews)
+        //Compute next renewal
         let nextRenewalStr = "-";
         let daysUntilStr = "-";
         if (a.auto_renews && a.end_on) {
@@ -167,7 +198,6 @@ async function handler(req: Request) {
       </div>
     `;
 
-    // Send via Mailtrap (nodemailer) unless dryRun
     if (!dryRun) {
       try {
         const info = await sendEmail({
@@ -184,14 +214,13 @@ async function handler(req: Request) {
       console.log("[mail] dryRun — skipped send to", to);
     }
 
-    // Log to email_reminders_sent (idempotent)
     try {
       const payload = rows.map(a => ({
         user_id,
         agreement_id: a.id,
-        event_kind: "DAILY_DIGEST", // make sure your CHECK includes this
+        event_kind: "DAILY_DIGEST",
         occurs_on: toISO(today),
-        offset_days: 0,              // allowed by your CHECK (0,30,60,90)
+        offset_days: 0,
       }));
 
       const { data: insRows, error: insErr } = await sb

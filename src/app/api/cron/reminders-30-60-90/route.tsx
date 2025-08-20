@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseServer";
-import { sendEmail } from "@/lib/mailer"; // Mailtrap-backed helper
+import { sendEmail } from "@/lib/mailer";
 
 export const runtime = "nodejs";
 
+/**
+ * Agreement row structure returned from the "agreements" table.
+ */
 type AgreementRow = {
   id: string;
   user_id: string | null;
@@ -16,18 +19,45 @@ type AgreementRow = {
   renewal_frequency_months: number | null;
 };
 
+/**
+ * Convert a Date object into an ISO yyyy-mm-dd string.
+ * @param d - Date to convert.
+ * @returns Formatted date string.
+ */
 const toISO = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+
+/**
+ * Parse a yyyy-mm-dd string into a Date.
+ * @param s - Date string or null.
+ * @returns Date object or null if invalid.
+ */
 const parseISO = (s: string | null) => {
   if (!s) return null;
   const [y,m,d] = s.split("-").map(Number);
   return new Date(y, (m||1)-1, d||1);
 };
 const d0 = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-const addMonths = (dt: Date, months: number) => { const d=new Date(dt); const day=d.getDate(); d.setMonth(d.getMonth()+months); if(d.getDate()!==day){} return d; };
-const addDays = (dt: Date, days: number) => { const d=new Date(dt); d.setDate(d.getDate()+days); return d; };
+
+const addMonths = (dt: Date, months: number) => { 
+    const d=new Date(dt); const day=d.getDate(); 
+    d.setMonth(d.getMonth()+months); 
+    if(d.getDate()!==day){} return d; 
+};
+
+const addDays = (dt: Date, days: number) => { 
+    const d=new Date(dt); 
+    d.setDate(d.getDate()+days); 
+    return d; 
+};
 const diffInDays = (a: Date, b: Date) => Math.round((d0(a).getTime()-d0(b).getTime())/(24*60*60*1000));
 
+/**
+ * Compute upcoming contract-related events (renewal, notice deadline, term end).
+ * @param a - Agreement row.
+ * @param today - Date reference point.
+ * @returns Array of event objects with kind, date, and label.
+ */
 function nextEvents(a: AgreementRow, today: Date) {
   const events: Array<{ kind: "RENEWAL"|"NOTICE_DEADLINE"|"TERM_END"; date: Date; label: string }> = [];
   const end = parseISO(a.end_on);
@@ -50,6 +80,12 @@ function nextEvents(a: AgreementRow, today: Date) {
   return events.filter(e => e.date >= today);
 }
 
+/**
+ * Build HTML markup for reminder emails.
+ * @param userEmail - Email of recipient.
+ * @param items - List of reminder items (vendor, title, kind, date, inDays).
+ * @returns HTML string for email body.
+ */
 function buildRemindersHTML(userEmail: string, items: Array<{vendor:string; title:string; kind:string; on:string; inDays:number;}>) {
   const rows = items.map(i => `
     <tr>
@@ -80,11 +116,31 @@ function buildRemindersHTML(userEmail: string, items: Array<{vendor:string; titl
     </div>`;
 }
 
-export async function GET(req: Request) { return handler(req); }
-export async function POST(req: Request) { return handler(req); }
+/**
+ * Handle GET request for sending reminders.
+ * @param req - HTTP request object.
+ * @returns JSON response.
+ */
+export async function GET(req: Request) {
+    return handler(req); 
+}
 
+/**
+ * Handle POST request for sending reminders.
+ * @param req - HTTP request object.
+ * @returns JSON response.
+ */
+export async function POST(req: Request) {
+    return handler(req);
+}
+
+/**
+ * Core handler to process reminder cron job.
+ *
+ * @param req - HTTP request object.
+ * @returns JSON response containing results of reminders sent.
+ */
 async function handler(req: Request) {
-  // shared-secret guard
   const secretHeader = req.headers.get("x-cron-secret");
   if (!process.env.CRON_SECRET || secretHeader !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -103,7 +159,7 @@ async function handler(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Build reminders per user
+  //Computes event windows & Groups by user and sends reminder emails
   const perUser: Record<string, Array<{ vendor:string; title:string; kind:string; on:string; inDays:number }>> = {};
   for (const a of (agreements ?? [])) {
     if (!a.user_id) continue;
@@ -118,7 +174,6 @@ async function handler(req: Request) {
     }
   }
 
-  // Send one email per user (if there are matches)
   const results: Array<{ user_id:string; to?:string; sent:boolean }> = [];
   for (const [user_id, items] of Object.entries(perUser)) {
     if (!items.length) { results.push({ user_id, to: undefined, sent: false }); continue; }

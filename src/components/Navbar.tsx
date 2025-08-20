@@ -3,6 +3,26 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
+/**
+ * Navbar Component
+ *
+ * Renders the top navigation bar for ContractHub’s marketing pages.
+ *
+ * Features:
+ * - Displays the app logo (linked to `/`).
+ * - Provides navigation links: Features, Pricing, About, and Contact.
+ * - Contains authentication actions:
+ *   - "Sign in" (outline button, links to `/signin`).
+ *   - "Get Started" (primary purple button, links to `/signup`).
+ *
+ * Layout:
+ * - Responsive: hides the marketing links on smaller screens (shown on `md+`).
+ * - Uses Tailwind for styling with flexbox and spacing utilities.
+ *
+ * Returns:
+ * - A full-width `<nav>` element containing logo, links, and auth buttons.
+ */
+
 export default function Navbar() {
   return (
     <nav className="w-full border-b bg-background">
@@ -28,7 +48,6 @@ export default function Navbar() {
           </Link>
         </div>
 
-        {/* Call to Action */}
         <div className="flex gap-3">
           <Link href="/signin">
             <Button variant="outline">Sign in</Button>

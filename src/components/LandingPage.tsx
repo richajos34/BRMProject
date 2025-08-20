@@ -1,4 +1,17 @@
-// src/components/LandingPage.tsx
+/**
+ * LandingPage.tsx
+ *
+ * Marketing landing page for ContractHub.
+ * Includes:
+ * - Hero section with headline + CTA
+ * - Company logos marquee
+ * - Demo preview section
+ * - Features grid
+ * - Testimonials
+ * - CTA section
+ * - Footer
+ */
+
 "use client";
 
 import Link from "next/link";
@@ -9,33 +22,32 @@ import { Star, ArrowRight, Users, Calendar, FileText, Shield } from 'lucide-reac
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 
-
 const companyLogos = [
-    'TechCorp', 'InnovateLabs', 'DataFlow', 'CloudSync', 'SecureVault',
-    'FlowTech', 'NexusAI', 'VelocityPro', 'StreamWorks', 'PulseTech',
-    'CoreSystems', 'BrightEdge', 'FlexiTech', 'RapidScale', 'FusionTech'
+    'BRM', 'Moogle', 'Metabricks', 'Mintrest', 'Metflix',
+    'Mpple', 'Mmazon', 'Malesforce', 'MubSpot', 'Mira',
+    'Mtlassian', 'Mithub', 'Meeva', 'Mnowflake', 'MerviceNow'
 ];
 
 const testimonials = [
     {
-        quote: "ContractHub reduced our contract renewal overhead by 85%. We never miss a deadline anymore.",
-        author: "Sarah Chen", title: "Head of Procurement", company: "TechCorp", rating: 5
+        quote: "ContractHub reduced our contract renewal overhead by 100%. We don't need gCal anymore!",
+        author: "Richa Jos", title: "CEO", company: "Moogle", rating: 5
     },
     {
-        quote: "The AI-powered analysis saved us $2.3M in the first year by catching unfavorable terms.",
-        author: "Michael Rodriguez", title: "Legal Director", company: "InnovateLabs", rating: 5
+        quote: "The AI powered analysis saved us $100M in the first year by catching key dates!",
+        author: "Micha Mos", title: "CEO", company: "Metabricks", rating: 5
     },
     {
-        quote: "Finally, a solution that makes contract management feel effortless. Highly recommended.",
-        author: "Emily Watson", title: "Operations Manager", company: "DataFlow Systems", rating: 5
+        quote: "A solution that makes contract management feel effortless.",
+        author: "Nicha Nos", title: "CEO", company: "Mnowflake", rating: 5
     }
 ];
 
 const features = [
-    { icon: <Calendar className="w-6 h-6" />, title: "Smart Reminders", description: "Never miss a renewal deadline with AI-powered notifications" },
-    { icon: <FileText className="w-6 h-6" />, title: "Document Analysis", description: "Automatically extract key terms from your contracts" },
-    { icon: <Shield className="w-6 h-6" />, title: "Risk Assessment", description: "Identify potential risks and optimize contract terms" },
-    { icon: <Users className="w-6 h-6" />, title: "Team Collaboration", description: "Keep your legal and procurement teams aligned" },
+    { icon: <Calendar className="w-6 h-6" />, title: "Reminders", description: "Don't miss a renewal deadline with notifications" },
+    { icon: <FileText className="w-6 h-6" />, title: "Document Analysis", description: "Automatically extract key terms from your contracts!!!" },
+    { icon: <Shield className="w-6 h-6" />, title: "Settings", description: "Change your profile" },
+    { icon: <Users className="w-6 h-6" />, title: "Team Collaboration", description: "Keep everyone in the know" },
 ];
 
 export function LandingPage() {
@@ -43,9 +55,8 @@ export function LandingPage() {
         <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-indigo-50">
 
 
-            {/* Hero */}
+            {/* ================== Hero Section ================== */}
             <section className="relative overflow-hidden pt-16 pb-32">
-                {/* Background Pattern */}
                 <div className="absolute inset-0 opacity-10 pointer-events-none">
                     <svg className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full" viewBox="0 0 800 600">
                         <path d="M400 50 L350 150 L450 150 Z" stroke="currentColor" strokeWidth="1" fill="none" className="text-purple-600" />
@@ -58,7 +69,7 @@ export function LandingPage() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
                     <div className="text-center">
                         <Badge className="mb-6 bg-purple-100 text-purple-800 hover:bg-purple-100">
-                            ✨ AI-Powered Contract Management
+                            AI Powered Contract Management
                         </Badge>
 
                         <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-gray-900 mb-6 leading-tight">
@@ -70,7 +81,7 @@ export function LandingPage() {
                         </h1>
 
                         <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
-                            ContractHub is an AI-powered procurement platform that automates the busy work of vendor management—
+                            ContractHub is an AI powered procurement platform that automates the busy work of vendor management
                             starting with contract management and renewal notifications.
                         </p>
 
@@ -78,22 +89,14 @@ export function LandingPage() {
                             <Link href="/signup">
                                 <Button size="lg" className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-8 py-3 text-lg">
                                     Get started free
-                                    <ArrowRight className="ml-2 w-5 h-5" />
                                 </Button>
                             </Link>
-                            <Link href="/resources">
-                                <Button variant="outline" size="lg" className="px-8 py-3 text-lg border-purple-200 hover:bg-purple-50">
-                                    Watch demo
-                                </Button>
-                            </Link>
+
                         </div>
 
-                        {/* Trusted by — BIG cards, slow rotating carousel */}
                         <div className="mb-16">
                             <p className="text-sm text-gray-500 mb-6">Trusted by leading companies</p>
-
                             <div className="relative overflow-hidden">
-                                {/* gradient edges */}
                                 <div className="pointer-events-none absolute left-0 top-0 h-full w-24 bg-gradient-to-r from-white to-transparent z-10" />
                                 <div className="pointer-events-none absolute right-0 top-0 h-full w-24 bg-gradient-to-l from-white to-transparent z-10" />
 
@@ -113,7 +116,6 @@ export function LandingPage() {
                                 </div>
                             </div>
 
-                            {/* CSS animations */}
                             <style jsx global>{`
                 @keyframes marquee {
                   0% { transform: translateX(0); }
@@ -138,6 +140,8 @@ export function LandingPage() {
                 </div>
             </section>
 
+            
+            {/* ================== Hero Section ================== */}
             <section className="py-16 bg-white">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-12">
@@ -153,7 +157,7 @@ export function LandingPage() {
                         <div className="absolute inset-0 bg-gradient-to-r from-purple-600/10 to-indigo-600/10 rounded-2xl blur-3xl scale-105"></div>
                         <div className="relative bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden h-[420px] flex items-center justify-center">
                             <Image
-                                src="/images/demo-dashboard.png"   // put your image in public/images
+                                src="/images/demo-dashboard.png"
                                 alt="ContractHub Demo Preview"
                                 width={1200}
                                 height={800}
@@ -164,13 +168,12 @@ export function LandingPage() {
                 </div>
             </section>
 
-            {/* Features */}
             <section className="py-16 bg-gray-50">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-12">
                         <h2 className="text-3xl font-bold text-gray-900 mb-4">Everything you need to manage contracts</h2>
                         <p className="text-gray-600 max-w-2xl mx-auto">
-                            From automated reminders to AI-powered risk analysis, we've got your contract management covered.
+                            From automated reminders to AI powered risk analysis, we've got your contract management covered.
                         </p>
                     </div>
 
@@ -190,7 +193,6 @@ export function LandingPage() {
                 </div>
             </section>
 
-            {/* Testimonials */}
             <section className="py-16 bg-white">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-12">
@@ -220,7 +222,7 @@ export function LandingPage() {
                 </div>
             </section>
 
-            {/* CTA */}
+            {/* ================== CTA ================== */}
             <section className="py-16 bg-gradient-to-r from-purple-600 to-indigo-600">
                 <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
                     <h2 className="text-3xl font-bold text-white mb-4">Ready to automate your contract management?</h2>
@@ -240,7 +242,7 @@ export function LandingPage() {
                 </div>
             </section>
 
-            {/* Footer */}
+            {/* ================== Footer ================== */}
             <footer className="bg-gray-900 text-gray-300 py-12">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
@@ -251,7 +253,7 @@ export function LandingPage() {
                                 </div>
                                 <span className="text-xl font-semibold text-white">ContractHub</span>
                             </div>
-                            <p className="text-gray-400 text-sm">AI-powered contract management for modern businesses.</p>
+                            <p className="text-gray-400 text-sm">AI powered contract management for modern businesses.</p>
                         </div>
 
                         <div>

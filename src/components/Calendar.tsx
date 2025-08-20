@@ -18,7 +18,7 @@ interface CalendarEvent {
   id: string;
   title: string;
   vendor: string;
-  date: string;  // yyyy-mm-dd
+  date: string;
   type: EventType;
   description?: string;
   agreementId: string;
@@ -43,11 +43,8 @@ interface AgreementRow {
   updated_at: string;
 }
 
-/* ===== Google-y aesthetic helpers ===== */
 const G_BLUE =
-  "bg-[#e8f0fe] text-[#1967d2] border border-[#d2e3fc]"; // event pill
-const G_BLUE_SOLID =
-  "bg-[#1a73e8] text-white"; // hover/active
+  "bg-[#e8f0fe] text-[#1967d2] border border-[#d2e3fc]";
 const G_ORANGE = "bg-[#fef3e2] text-[#c35900] border border-[#fde1bd]";
 const G_GRAY = "bg-gray-100 text-gray-700 border border-gray-200";
 
@@ -62,7 +59,7 @@ const getEventClasses = (type: EventType) => {
   }
 };
 
-/* ===== date helpers ===== */
+// date helpers
 const toISO = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
     d.getDate()
@@ -87,7 +84,6 @@ const addDays = (dt: Date, days: number) => {
   return d;
 };
 
-/* Build recurring events for a month window (same logic as your version) */
 function generateEventsFromAgreement(
   a: AgreementRow,
   windowStart: Date,
@@ -172,16 +168,13 @@ export function Calendar() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
-
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
   const daysInMonth = lastDay.getDate();
   const startingDayOfWeek = firstDay.getDay();
 
-  // current view ± 6 months to reduce refetches
   const windowStart = useMemo(
     () => addMonths(new Date(year, month, 1), -6),
     [year, month]
@@ -230,7 +223,6 @@ export function Calendar() {
     };
   }, [windowStart, windowEnd]);
 
-  // Build days with leading blanks
   const days: Array<number | null> = [];
   for (let i = 0; i < startingDayOfWeek; i++) days.push(null);
   for (let d = 1; d <= daysInMonth; d++) days.push(d);
@@ -255,7 +247,6 @@ export function Calendar() {
     today.getMonth() === month &&
     today.getFullYear() === year;
 
-  // For bottom table
   const monthStartISO = toISO(new Date(year, month, 1));
   const monthEndISO = toISO(new Date(year, month + 1, 0));
   const monthEvents = useMemo(
@@ -287,7 +278,6 @@ export function Calendar() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Button variant="outline" size="sm" onClick={goToday}
@@ -311,10 +301,8 @@ export function Calendar() {
         </div>
       </div>
 
-      {/* Month grid (Google-like) */}
       <Card className="overflow-hidden">
         <CardContent className="p-0">
-          {/* Sticky weekday header */}
           <div className="grid grid-cols-7 text-xs font-medium text-gray-500 bg-white sticky top-0 z-10 border-b">
             {["SUN","MON","TUE","WED","THU","FRI","SAT"].map((d) => (
               <div key={d} className="px-3 py-2">{d}</div>
@@ -329,7 +317,6 @@ export function Calendar() {
               >
                 {day && (
                   <div className="h-full w-full p-2">
-                    {/* Day number with today chip */}
                     <div className="flex items-center justify-between">
                       <div
                         className={cn(
@@ -343,12 +330,10 @@ export function Calendar() {
                       </div>
                     </div>
 
-                    {/* Events list with Google-like pills */}
                     <div className="mt-2 space-y-1">
                       {getEventsForDate(day).slice(0, 3).map((e) => (
                         <EventPill key={e.id} e={e} />
                       ))}
-                      {/* overflow indicator */}
                       {getEventsForDate(day).length > 3 && (
                         <div className="text-[11px] text-[#1967d2] font-medium px-1">
                           +{getEventsForDate(day).length - 3} more
@@ -363,7 +348,6 @@ export function Calendar() {
         </CardContent>
       </Card>
 
-      {/* Legend */}
       <div className="flex items-center gap-6 text-sm">
         <div className="flex items-center gap-2">
           <span className="inline-block h-3 w-3 rounded-full bg-[#1a73e8]" />
@@ -379,7 +363,6 @@ export function Calendar() {
         </div>
       </div>
 
-      {/* Events table for the month (unchanged behavior, refined style) */}
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -421,7 +404,6 @@ export function Calendar() {
         </CardContent>
       </Card>
 
-      {/* Drawer */}
       <AgreementDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}

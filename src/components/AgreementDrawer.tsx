@@ -8,7 +8,23 @@ import { Separator } from './ui/separator';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Save, X, FileText, ExternalLink, Calendar, Clock } from 'lucide-react';
-import { EventType } from '@/types/calendar';
+
+/**
+ * AgreementDrawer Component
+ *
+ * A side-drawer UI for viewing and editing agreement details or calendar events.
+ * - Displays agreement metadata (vendor, title, dates, auto-renewal, notice period).
+ * - Supports edit mode with form inputs and save/cancel handling.
+ * - Calculates and displays the explicit opt-out date when applicable.
+ * - Can also render calendar event details in a read-only card format.
+ * - Optionally shows the source document (with link to open).
+ *
+ * Props:
+ *  - isOpen (boolean): Controls whether the drawer is visible.
+ *  - onClose (function): Callback triggered when drawer is closed.
+ *  - agreement (Agreement | null): Agreement details to display/edit.
+ *  - event (CalendarEvent | null): Calendar event details (read-only view).
+ */
 
 interface Agreement {
   id: string;
@@ -50,14 +66,12 @@ export function AgreementDrawer({ isOpen, onClose, agreement, event }: Agreement
   });
 
   const handleSave = () => {
-    // Handle save logic here
     console.log('Saving agreement:', formData);
     setIsEditing(false);
   };
 
   const handleCancel = () => {
     setIsEditing(false);
-    // Reset form data
     setFormData({
       vendor: agreement?.vendor || event?.vendor || '',
       title: agreement?.title || event?.title || '',
@@ -136,7 +150,6 @@ export function AgreementDrawer({ isOpen, onClose, agreement, event }: Agreement
         </SheetHeader>
 
         <div className="space-y-6">
-          {/* Event-specific content */}
           {event && (
             <Card>
               <CardHeader>
@@ -157,7 +170,6 @@ export function AgreementDrawer({ isOpen, onClose, agreement, event }: Agreement
             </Card>
           )}
 
-          {/* Basic Information */}
           <div className="space-y-4">
             <h3>Basic Information</h3>
             
@@ -192,7 +204,6 @@ export function AgreementDrawer({ isOpen, onClose, agreement, event }: Agreement
 
           <Separator />
 
-          {/* Term Details */}
           <div className="space-y-4">
             <h3>Term Details</h3>
             
@@ -275,7 +286,6 @@ export function AgreementDrawer({ isOpen, onClose, agreement, event }: Agreement
             )}
           </div>
 
-          {/* Source Document */}
           {agreement?.fileName && (
             <>
               <Separator />

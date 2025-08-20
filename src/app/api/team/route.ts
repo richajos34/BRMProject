@@ -1,7 +1,13 @@
-// app/api/team/route.ts
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseServer";
 
+/**
+ * GET /api/team
+ * Fetch all team members for the given user.
+ *
+ * @param req - The incoming HTTP request (expects `x-user-id` header).
+ * @returns JSON response with members or an error.
+ */
 export async function GET(req: Request) {
   const userId = req.headers.get("x-user-id");
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -17,6 +23,17 @@ export async function GET(req: Request) {
   return NextResponse.json({ members: data ?? [] });
 }
 
+/**
+ * POST /api/team
+ * Add or update a team member for the given user.
+ *
+ * @param req - The incoming HTTP request (expects `x-user-id` header and JSON body).
+ *   Body fields:
+ *     - email: string (required)
+ *     - name: string (optional)
+ *     - role: string (optional)
+ * @returns JSON response with the added/updated member or an error.
+ */
 export async function POST(req: Request) {
   const userId = req.headers.get("x-user-id");
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

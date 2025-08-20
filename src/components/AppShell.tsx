@@ -25,6 +25,7 @@ import {
   Sun,
   LogOut,
   User,
+  UsersIcon as People,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -52,6 +53,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/", label: "Dashboard", icon: Home },
     { href: "/calendar", label: "Calendar", icon: CalendarIcon },
     { href: "/documents", label: "Documents", icon: FileText },
+    { href: "/team", label: "Teams", icon: People },
     { href: "/settings", label: "Settings", icon: Settings },
   ];
 

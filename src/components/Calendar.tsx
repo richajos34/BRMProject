@@ -1,19 +1,15 @@
 "use client";
+
 import { useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Card, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getUserIdClient } from "@/lib/getUserClient"; // <-- add this
+import { getUserIdClient } from "@/lib/getUserClient";
 import { AgreementDrawer } from "@/components/AgreementDrawer";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "./ui/table";
 
 type EventType = "notice" | "renewal" | "termination";
@@ -22,7 +18,7 @@ interface CalendarEvent {
   id: string;
   title: string;
   vendor: string;
-  date: string; // yyyy-mm-dd
+  date: string;  // yyyy-mm-dd
   type: EventType;
   description?: string;
   agreementId: string;
@@ -32,8 +28,8 @@ interface AgreementRow {
   id: string;
   vendor: string;
   title: string;
-  effective_on: string | null; // yyyy-mm-dd
-  end_on: string | null;       // yyyy-mm-dd
+  effective_on: string | null;
+  end_on: string | null;
   term_months: number | null;
   auto_renews: boolean | null;
   notice_days: number | null;
@@ -47,20 +43,26 @@ interface AgreementRow {
   updated_at: string;
 }
 
-const getEventColor = (type: EventType) => {
+/* ===== Google-y aesthetic helpers ===== */
+const G_BLUE =
+  "bg-[#e8f0fe] text-[#1967d2] border border-[#d2e3fc]"; // event pill
+const G_BLUE_SOLID =
+  "bg-[#1a73e8] text-white"; // hover/active
+const G_ORANGE = "bg-[#fef3e2] text-[#c35900] border border-[#fde1bd]";
+const G_GRAY = "bg-gray-100 text-gray-700 border border-gray-200";
+
+const getEventClasses = (type: EventType) => {
   switch (type) {
-    case "notice":
-      return "bg-red-100 text-red-800 border-red-200";
     case "renewal":
-      return "bg-blue-100 text-blue-800 border-blue-200";
-    case "termination":
-      return "bg-gray-100 text-gray-800 border-gray-200";
+      return { chip: G_BLUE, bar: "bg-[#1a73e8]" };
+    case "notice":
+      return { chip: G_ORANGE, bar: "bg-[#f29900]" };
     default:
-      return "bg-gray-100 text-gray-800 border-gray-200";
+      return { chip: G_GRAY, bar: "bg-gray-400" };
   }
 };
 
-// --- date helpers (no external deps) ---
+/* ===== date helpers ===== */
 const toISO = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
     d.getDate()
@@ -68,7 +70,6 @@ const toISO = (d: Date) =>
 
 const parseISO = (s: string) => {
   const [y, m, d] = s.split("-").map(Number);
-  // Note: months are 0-based in JS Date
   return new Date(y, (m || 1) - 1, d || 1);
 };
 
@@ -76,11 +77,7 @@ const addMonths = (dt: Date, months: number) => {
   const d = new Date(dt.getTime());
   const day = d.getDate();
   d.setMonth(d.getMonth() + months);
-  // If month rollover happened (e.g., Jan 31 -> Mar 3), keep JS behavior.
-  // For our use case (end dates/renewals), this is acceptable.
-  if (d.getDate() !== day) {
-    // nothing special; JS auto-adjusts
-  }
+  if (d.getDate() !== day) { /* JS auto adjust ok */ }
   return d;
 };
 
@@ -90,12 +87,12 @@ const addDays = (dt: Date, days: number) => {
   return d;
 };
 
-// Generate recurring renewal dates within a window, starting from end_on.
+/* Build recurring events for a month window (same logic as your version) */
 function generateEventsFromAgreement(
   a: AgreementRow,
   windowStart: Date,
   windowEnd: Date,
-  cap: number = 36 // safety cap
+  cap: number = 36
 ): CalendarEvent[] {
   const evts: CalendarEvent[] = [];
   if (!a.end_on) return evts;
@@ -104,7 +101,6 @@ function generateEventsFromAgreement(
   const title = a.title;
   const endDate = parseISO(a.end_on);
 
-  // Always include the original term end (aka termination)
   if (endDate >= windowStart && endDate <= windowEnd) {
     evts.push({
       id: `${a.id}-term-${a.end_on}`,
@@ -118,20 +114,21 @@ function generateEventsFromAgreement(
   }
 
   const auto = !!a.auto_renews;
-  const freq = a.renewal_frequency_months && a.renewal_frequency_months > 0 ? a.renewal_frequency_months : 12;
+  const freq =
+    a.renewal_frequency_months && a.renewal_frequency_months > 0
+      ? a.renewal_frequency_months
+      : 12;
   const noticeDays = a.notice_days ?? 0;
 
   if (!auto) return evts;
 
-  // Find the first renewal date >= windowStart
-  let renewal = new Date(endDate.getTime());
+  let renewal = new Date(endDate);
   let guard = 0;
   while (renewal < windowStart && guard < cap) {
     renewal = addMonths(renewal, freq);
     guard++;
   }
 
-  // Push renewals + notice deadlines within the window
   while (renewal <= windowEnd && guard < cap) {
     const renewalISO = toISO(renewal);
 
@@ -179,16 +176,20 @@ export function Calendar() {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
-  // Compute the visible month window
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
   const daysInMonth = lastDay.getDate();
   const startingDayOfWeek = firstDay.getDay();
 
-  // For fetching & generating events, use a broader window so prev/next month
-  // buttons don't immediately re-fetch. Here: current month +/- 6 months.
-  const windowStart = useMemo(() => addMonths(new Date(year, month, 1), -6), [year, month]);
-  const windowEnd = useMemo(() => addMonths(new Date(year, month + 1, 0), 6), [year, month]);
+  // current view ± 6 months to reduce refetches
+  const windowStart = useMemo(
+    () => addMonths(new Date(year, month, 1), -6),
+    [year, month]
+  );
+  const windowEnd = useMemo(
+    () => addMonths(new Date(year, month + 1, 0), 6),
+    [year, month]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -197,9 +198,7 @@ export function Calendar() {
       setLoading(true);
       setError(null);
       try {
-
         const userId = await getUserIdClient();
-        console.log("Loading agreements for user:", userId);
         if (!userId) throw new Error("Not signed in");
 
         const res = await fetch("/api/agreements", {
@@ -207,9 +206,7 @@ export function Calendar() {
           headers: { "x-user-id": userId },
         });
         const json = await res.json();
-        if (!res.ok) {
-          throw new Error(json?.error || "Failed to load agreements");
-        }
+        if (!res.ok) throw new Error(json?.error || "Failed to load agreements");
         const agreements: AgreementRow[] = json.agreements || [];
 
         const all: CalendarEvent[] = [];
@@ -218,7 +215,6 @@ export function Calendar() {
           all.push(...evts);
         }
 
-        // sort by date asc for stable UI
         all.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
         if (!cancelled) setEvents(all);
       } catch (e: any) {
@@ -234,119 +230,132 @@ export function Calendar() {
     };
   }, [windowStart, windowEnd]);
 
-  // Build the days grid
+  // Build days with leading blanks
   const days: Array<number | null> = [];
   for (let i = 0; i < startingDayOfWeek; i++) days.push(null);
   for (let d = 1; d <= daysInMonth; d++) days.push(d);
 
   const monthNames = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
+    "January","February","March","April","May","June",
+    "July","August","September","October","November","December",
   ];
 
-  const goToPreviousMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-  const goToNextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+  const goPrev = () => setCurrentDate(new Date(year, month - 1, 1));
+  const goNext = () => setCurrentDate(new Date(year, month + 1, 1));
+  const goToday = () => setCurrentDate(new Date());
 
-  const getEventsForDate = (day: number) => {
-    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    return events.filter((e) => e.date === dateStr);
-  };
+  const dateKey = (d: number) =>
+    `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const getEventsForDate = (d: number) =>
+    events.filter((e) => e.date === dateKey(d));
 
-  const handleEventClick = (event: CalendarEvent) => {
-    setSelectedEvent(event);
-    setIsDrawerOpen(true);
-  };
+  const today = new Date();
+  const isToday = (d: number) =>
+    today.getDate() === d &&
+    today.getMonth() === month &&
+    today.getFullYear() === year;
 
-  const isToday = (day: number) => {
-    const today = new Date();
-    return (
-      today.getDate() === day &&
-      today.getMonth() === month &&
-      today.getFullYear() === year
-    );
-  };
-
-  // Events only for the current month (for the table)
+  // For bottom table
   const monthStartISO = toISO(new Date(year, month, 1));
   const monthEndISO = toISO(new Date(year, month + 1, 0));
-  const monthEvents = useMemo(() => {
-    return events.filter((e) => e.date >= monthStartISO && e.date <= monthEndISO);
-  }, [events, monthStartISO, monthEndISO]);
+  const monthEvents = useMemo(
+    () => events.filter((e) => e.date >= monthStartISO && e.date <= monthEndISO),
+    [events, monthStartISO, monthEndISO]
+  );
+
+  const EventPill = ({ e }: { e: CalendarEvent }) => {
+    const cls = getEventClasses(e.type);
+    return (
+      <button
+        onClick={() => { setSelectedEvent(e); setIsDrawerOpen(true); }}
+        className={cn(
+          "group relative w-full text-left rounded-md text-xs px-2 py-1 flex items-center gap-2",
+          "transition-all",
+          cls.chip,
+          "hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1a73e8]"
+        )}
+        title={e.description}
+      >
+        <span className={cn("h-3 w-0.5 rounded-sm", cls.bar)} />
+        <span className="truncate">
+          {e.type === "notice" ? "Notice — " : e.type === "renewal" ? "Renewal — " : "Term — "}
+          {e.vendor}
+        </span>
+      </button>
+    );
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="mb-2">Calendar</h1>
-          <p className="text-muted-foreground">View all contract deadlines and renewals</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={goToday}
+            className="rounded-full border-gray-300">
+            <CalendarIcon size={16} className="mr-2" />
+            Today
+          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" onClick={goPrev}
+              className="rounded-full hover:bg-gray-100">
+              <ChevronLeft size={18} />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={goNext}
+              className="rounded-full hover:bg-gray-100">
+              <ChevronRight size={18} />
+            </Button>
+          </div>
+          <h1 className="text-xl font-semibold">
+            {monthNames[month]} {year}
+          </h1>
         </div>
-        <Button variant="outline" onClick={() => setCurrentDate(new Date())}>
-          <CalendarIcon size={16} className="mr-2" />
-          Today
-        </Button>
       </div>
 
-      {/* Calendar Card */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>
-              {monthNames[month]} {year}
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={goToPreviousMonth}>
-                <ChevronLeft size={18} />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={goToNextMonth}>
-                <ChevronRight size={18} />
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading && <div className="text-sm text-muted-foreground">Loading events…</div>}
-          {error && <div className="text-sm text-red-600">{error}</div>}
-          <div className="grid grid-cols-7 gap-1">
-            {/* Day headers */}
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-              <div key={d} className="p-3 text-center text-sm text-muted-foreground font-medium">
-                {d}
-              </div>
+      {/* Month grid (Google-like) */}
+      <Card className="overflow-hidden">
+        <CardContent className="p-0">
+          {/* Sticky weekday header */}
+          <div className="grid grid-cols-7 text-xs font-medium text-gray-500 bg-white sticky top-0 z-10 border-b">
+            {["SUN","MON","TUE","WED","THU","FRI","SAT"].map((d) => (
+              <div key={d} className="px-3 py-2">{d}</div>
             ))}
-            {/* Days */}
+          </div>
+
+          <div className="grid grid-cols-7 gap-px bg-gray-200">
             {days.map((day, idx) => (
               <div
                 key={idx}
-                className={cn(
-                  "min-h-[120px] border border-border p-2 bg-background",
-                  day && "hover:bg-muted/50 cursor-pointer"
-                )}
+                className="min-h-[132px] bg-white"
               >
                 {day && (
-                  <>
-                    <div
-                      className={cn("text-sm mb-2 font-medium", isToday(day) && "text-primary")}
-                    >
-                      {day}
+                  <div className="h-full w-full p-2">
+                    {/* Day number with today chip */}
+                    <div className="flex items-center justify-between">
+                      <div
+                        className={cn(
+                          "h-7 w-7 flex items-center justify-center rounded-full text-sm",
+                          isToday(day)
+                            ? "bg-[#1a73e8] text-white font-medium"
+                            : "text-gray-700"
+                        )}
+                      >
+                        {day}
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      {getEventsForDate(day).map((event) => (
-                        <div
-                          key={event.id}
-                          onClick={() => handleEventClick(event)}
-                          className={cn(
-                            "text-xs p-1 rounded border cursor-pointer hover:shadow-sm transition-shadow",
-                            getEventColor(event.type)
-                          )}
-                          title={event.description}
-                        >
-                          <div className="font-medium truncate">{event.title}</div>
-                          <div className="truncate opacity-75">{event.vendor}</div>
-                        </div>
+
+                    {/* Events list with Google-like pills */}
+                    <div className="mt-2 space-y-1">
+                      {getEventsForDate(day).slice(0, 3).map((e) => (
+                        <EventPill key={e.id} e={e} />
                       ))}
+                      {/* overflow indicator */}
+                      {getEventsForDate(day).length > 3 && (
+                        <div className="text-[11px] text-[#1967d2] font-medium px-1">
+                          +{getEventsForDate(day).length - 3} more
+                        </div>
+                      )}
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
             ))}
@@ -355,35 +364,28 @@ export function Calendar() {
       </Card>
 
       {/* Legend */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-red-500" />
-              <span className="text-sm">Notice Deadline</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-blue-500" />
-              <span className="text-sm">Renewal</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-gray-500" />
-              <span className="text-sm">Term End</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-center gap-6 text-sm">
+        <div className="flex items-center gap-2">
+          <span className="inline-block h-3 w-3 rounded-full bg-[#1a73e8]" />
+          <span>Renewal</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-block h-3 w-3 rounded-full bg-[#f29900]" />
+          <span>Notice deadline</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-block h-3 w-3 rounded-full bg-gray-500" />
+          <span>Term end</span>
+        </div>
+      </div>
 
-      {/* Events Table for current month */}
+      {/* Events table for the month (unchanged behavior, refined style) */}
       <Card>
-        <CardHeader>
-          <CardTitle>Events this month</CardTitle>
-        </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Date</TableHead>
+                <TableHead className="w-[120px]">Date</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Vendor</TableHead>
                 <TableHead>Title</TableHead>
@@ -398,23 +400,22 @@ export function Calendar() {
                   </TableCell>
                 </TableRow>
               )}
-              {monthEvents.map((e) => (
-                <TableRow key={e.id} className="hover:bg-muted/50">
-                  <TableCell>{e.date}</TableCell>
-                  <TableCell>
-                    <Badge className={cn(getEventColor(e.type).replace("bg-", "bg-"))}>
-                      {e.type === "notice"
-                        ? "Notice"
-                        : e.type === "renewal"
-                          ? "Renewal"
-                          : "Term End"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{e.vendor}</TableCell>
-                  <TableCell>{e.title}</TableCell>
-                  <TableCell className="text-muted-foreground">{e.description}</TableCell>
-                </TableRow>
-              ))}
+              {monthEvents.map((e) => {
+                const { chip } = getEventClasses(e.type);
+                return (
+                  <TableRow key={e.id} className="hover:bg-gray-50">
+                    <TableCell>{e.date}</TableCell>
+                    <TableCell>
+                      <Badge className={chip}>
+                        {e.type === "notice" ? "Notice" : e.type === "renewal" ? "Renewal" : "Term End"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{e.vendor}</TableCell>
+                    <TableCell>{e.title}</TableCell>
+                    <TableCell className="text-muted-foreground">{e.description}</TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>

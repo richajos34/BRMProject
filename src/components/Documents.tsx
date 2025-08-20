@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
-import { Upload, FileText, Eye, Calendar as CalendarIcon, CheckCircle, X, Pencil } from "lucide-react";
+import { Upload, FileText, Eye, Calendar as CalendarIcon, CheckCircle, X, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AgreementDrawer } from "./AgreementDrawer";
 import { authedFetch } from "@/lib/authedFetch";
@@ -141,7 +141,7 @@ function SlideOver({
 }
 
 export function Documents() {
-  const [agreements, setAgreements] = useState<AgreementRow[]>([])
+  const [agreements, setAgreements] = useState<AgreementRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -167,6 +167,11 @@ export function Documents() {
   const [dupOpen, setDupOpen] = useState(false);
   const [dupOf, setDupOf] = useState<AgreementRow | null>(null);
   const pendingUploadRef = useRef<File | null>(null);
+
+  // delete modal
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<AgreementRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // drag
   const [isDragOver, setIsDragOver] = useState(false);
@@ -196,7 +201,6 @@ export function Documents() {
     if (a.signed_url) {
       window.open(a.signed_url, "_blank", "noopener,noreferrer");
     } else {
-      // fallback if no signed URL is present
       setSelectedAgreement(a);
       setIsDrawerOpen(true);
     }
@@ -231,6 +235,31 @@ export function Documents() {
       alert(e?.message || "Failed to save");
     } finally {
       setEditSaving(false);
+    }
+  };
+
+  // DELETE flow
+  const askDelete = (a: AgreementRow) => {
+    setDeleteTarget(a);
+    setDeleteOpen(true);
+  };
+  const cancelDelete = () => {
+    setDeleteOpen(false);
+    setDeleteTarget(null);
+  };
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await authedFetch(`/api/agreements/${deleteTarget.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await res.text());
+      await refresh();
+      setDeleteOpen(false);
+      setDeleteTarget(null);
+    } catch (e: any) {
+      alert(e?.message || "Failed to delete");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -464,10 +493,19 @@ export function Documents() {
                         <Pencil size={16} />
                       </Button>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right flex items-center justify-end gap-1">
                       <Button variant="ghost" size="sm" onClick={() => openView(a)}>
                         <Eye size={16} className="mr-2" />
                         View
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Delete"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => askDelete(a)}
+                      >
+                        <Trash2 size={16} />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -482,7 +520,6 @@ export function Documents() {
       <AgreementDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
-        // if your AgreementDrawer expects a different shape, map here:
       />
 
       {/* Edit Slide-over */}
@@ -610,6 +647,28 @@ export function Documents() {
               Cancel
             </Button>
             <Button onClick={handleConfirmReupload}>Re-upload anyway</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        open={deleteOpen}
+        onClose={deleting ? () => {} : cancelDelete}
+        title="Delete agreement"
+      >
+        <div className="space-y-4">
+          <p className="text-sm">
+            Are you sure you want to delete <span className="font-medium">{deleteTarget?.title}</span> from{" "}
+            <span className="font-medium">{deleteTarget?.vendor}</span>? This action cannot be undone.
+          </p>
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="ghost" onClick={cancelDelete} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
           </div>
         </div>
       </Modal>

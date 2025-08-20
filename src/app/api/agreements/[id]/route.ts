@@ -29,6 +29,7 @@ type AgreementRow = {
 };
 
 type EventKind = "notice" | "renewal" | "termination";
+const BUCKET = process.env.SUPABASE_BUCKET ?? "";
 
 // ---- tiny date helpers (same logic as your calendar) ----
 const toISO = (d: Date) =>
@@ -190,3 +191,63 @@ export async function PATCH(
 
   return NextResponse.json({ ok: true, agreement: updated, key_dates_inserted: newDates.length });
 }
+
+export async function DELETE(
+    req: Request,
+    { params }: { params: { id: string } }
+  ) {
+    const userId = req.headers.get("x-user-id");
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  
+    const { id } = params;
+    const sb = supabaseAdmin();
+  
+    // 1) Fetch the agreement to confirm ownership and get storage key
+    const { data: agreement, error: fetchErr } = await sb
+      .from("agreements")
+      .select("id, user_id, source_file_path")
+      .eq("id", id)
+      .eq("user_id", userId)
+      .single();
+  
+    if (fetchErr) {
+      return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+    }
+    if (!agreement) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+  
+    // 2) Remove the file from Storage (if you keep originals there)
+    const storageKey = (agreement.source_file_path || "").replace(/^\/+/, "");
+    if (storageKey) {
+      const { error: removeErr } = await sb.storage.from(BUCKET).remove([storageKey]);
+      // Don’t fail the whole request if storage deletion errs; just log
+      if (removeErr) console.error("[agreements:delete] storage remove error:", removeErr.message);
+    }
+  
+    // 3) Delete related key_dates if you don’t have ON DELETE CASCADE
+    // (safe to keep if you *do* have FK cascade)
+    const { error: kdErr } = await sb
+      .from("key_dates")
+      .delete()
+      .eq("agreement_id", id);
+    if (kdErr) {
+      // Not fatal — log and continue
+      console.error("[agreements:delete] key_dates delete error:", kdErr.message);
+    }
+  
+    // 4) Delete the agreement row
+    const { error: delErr } = await sb
+      .from("agreements")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
+  
+    if (delErr) {
+      return NextResponse.json({ error: delErr.message }, { status: 500 });
+    }
+  
+    return NextResponse.json({ ok: true });
+  }

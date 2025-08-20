@@ -11,7 +11,7 @@ export const AgreementZ = z.object({
   autoRenews: z.boolean().default(false),
   noticeDays: z.number().int().min(0).default(0),
   explicitOptOutDate: IsoDate,
-  renewalFrequencyMonths: z.number().int().min(0).default(12),
+  renewalFrequencyMonths: z.number().int().positive().nullable(),
   sourceFileName: z.string(),
   sourceFilePath: z.string(),
   modelName: z.string().optional()

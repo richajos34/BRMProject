@@ -1,131 +1,154 @@
-// app/api/team/send/route.ts
+// src/app/api/team/send/route.ts
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseServer";
-import { Resend } from "resend";
+import { sendEmail } from "@/lib/mailer";
 
-// simple digest email body (reuse your existing daily digest logic if you want)
-async function buildDigestHtml(sb: ReturnType<typeof supabaseAdmin>, ownerUserId: string, today = new Date()) {
-  const toISO = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const { data: agreements } = await sb
-    .from("agreements")
-    .select("vendor,title,effective_on,end_on,auto_renews,notice_days")
-    .eq("user_id", ownerUserId);
+type Scope = "me" | "team";
 
-  const rows = (agreements ?? []).map(a => `
-    <tr>
-      <td style="padding:6px;border-bottom:1px solid #eee;">${a.vendor ?? "-"}</td>
-      <td style="padding:6px;border-bottom:1px solid #eee;">${a.title ?? "-"}</td>
-      <td style="padding:6px;border-bottom:1px solid #eee;">${a.effective_on ?? "-"}</td>
-      <td style="padding:6px;border-bottom:1px solid #eee;">${a.end_on ?? "-"}</td>
-      <td style="padding:6px;border-bottom:1px solid #eee;">${a.auto_renews ? "Yes" : "No"}</td>
-      <td style="padding:6px;border-bottom:1px solid #eee;">${a.notice_days ?? 0}</td>
-    </tr>
-  `).join("");
+const toISO = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
 
-  return {
-    subject: `Your daily contract digest — ${toISO(today)}`,
-    html: `
-      <div style="font-family:system-ui,Segoe UI,Arial">
-        <h2 style="margin:0 0 12px;">Your daily contract digest</h2>
-        <p style="margin:0 0 12px;">Here’s a summary of agreements.</p>
-        <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:14px;">
-          <thead><tr>
-            <th style="text-align:left;padding:6px;border-bottom:2px solid #ddd;">Vendor</th>
-            <th style="text-align:left;padding:6px;border-bottom:2px solid #ddd;">Title</th>
-            <th style="text-align:left;padding:6px;border-bottom:2px solid #ddd;">Effective</th>
-            <th style="text-align:left;padding:6px;border-bottom:2px solid #ddd;">End</th>
-            <th style="text-align:left;padding:6px;border-bottom:2px solid #ddd;">Auto</th>
-            <th style="text-align:left;padding:6px;border-bottom:2px solid #ddd;">Notice</th>
-          </tr></thead>
-          <tbody>${rows || `<tr><td colspan="6" style="padding:8px;">No agreements yet.</td></tr>`}</tbody>
-        </table>
-      </div>
-    `,
-  };
-}
+function digestHtml({
+  appUrl,
+  rows,
+  invitedBanner,
+}: {
+  appUrl: string;
+  rows: Array<{
+    vendor: string;
+    title: string;
+    effective_on: string | null;
+    end_on: string | null;
+    auto_renews: boolean | null;
+    notice_days: number | null;
+  }>;
+  invitedBanner?: { ownerEmail: string } | null;
+}) {
+  const banner = invitedBanner
+    ? `<div style="padding:12px 16px;margin:0 0 12px;border:1px solid #e9d5ff;border-radius:8px;background:#faf5ff;color:#6b21a8;">
+         <strong>You're invited!</strong> ${invitedBanner.ownerEmail} invited you to join their ContractHub workspace.
+         <a href="${appUrl}" style="color:#7c3aed;text-decoration:underline;margin-left:6px;">Accept invite</a>
+       </div>`
+    : "";
 
-function buildInviteHtml(inviterEmail: string) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  return {
-    subject: "You’re invited to ContractHub",
-    html: `
-      <div style="font-family:system-ui,Segoe UI,Arial">
-        <h2 style="margin:0 0 12px;">You’re invited to ContractHub</h2>
-        <p>${inviterEmail} invited you to join their team on ContractHub.</p>
-        <p><a href="${appUrl}/signup" style="color:#4f46e5">Create your account</a> to view contract dashboards and reminders.</p>
-      </div>
-    `
-  };
+  const bodyRows =
+    rows.length === 0
+      ? `<tr><td colspan="6" style="padding:12px;">No agreements yet.</td></tr>`
+      : rows
+          .sort((a, b) => a.vendor.localeCompare(b.vendor))
+          .map((a) => {
+            const eff = a.effective_on
+              ? new Date(a.effective_on).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+              : "-";
+            const end = a.end_on
+              ? new Date(a.end_on).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+              : "-";
+            return `
+              <tr>
+                <td style="padding:8px;border-bottom:1px solid #eee;">${a.vendor}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">${a.title}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">${eff}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">${end}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">${a.auto_renews ? "Yes" : "No"}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">${a.notice_days ?? 0}</td>
+              </tr>
+            `;
+          })
+          .join("");
+
+  return `
+  <div style="font-family:system-ui,Segoe UI,Arial;line-height:1.45;">
+    ${banner}
+    <h2 style="margin:0 0 12px;">ContractHub daily digest</h2>
+    <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:14px;">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:8px;border-bottom:2px solid #ddd;">Vendor</th>
+          <th style="text-align:left;padding:8px;border-bottom:2px solid #ddd;">Title</th>
+          <th style="text-align:left;padding:8px;border-bottom:2px solid #ddd;">Effective</th>
+          <th style="text-align:left;padding:8px;border-bottom:2px solid #ddd;">End</th>
+          <th style="text-align:left;padding:8px;border-bottom:2px solid #ddd;">Auto-renews</th>
+          <th style="text-align:left;padding:8px;border-bottom:2px solid #ddd;">Notice days</th>
+        </tr>
+      </thead>
+      <tbody>${bodyRows}</tbody>
+    </table>
+    <p style="margin:16px 0 0;">
+      <a href="${appUrl}" style="color:#7c3aed;text-decoration:underline">Open ContractHub</a>
+    </p>
+  </div>`;
 }
 
 export async function POST(req: Request) {
-  const ownerUserId = req.headers.get("x-user-id");
-  if (!ownerUserId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const sb = supabaseAdmin();
+    const userId = req.headers.get("x-user-id");
+    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const sb = supabaseAdmin();
-  const { scope } = await req.json().catch(() => ({ scope: "me" } as { scope: "me" | "team" }));
+    const { scope } = (await req.json()) as { scope: Scope };
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
-  const resendKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.EMAIL_FROM ?? "dev@localhost.test";
-  const resend = resendKey ? new Resend(resendKey) : null;
-
-  // find owner's email (for invites + "me")
-  const { data: ownerRes } = await sb.auth.admin.getUserById(ownerUserId);
-  const ownerEmail = (ownerRes?.user?.email ?? "owner@localhost.test") as string;
-
-  const digest = await buildDigestHtml(sb, ownerUserId);
-
-  if (scope === "me") {
-    // send to owner only
-    let sendError: string | null = null;
-    if (resend) {
-      const result = await resend.emails.send({ from: fromEmail, to: ownerEmail, subject: digest.subject, html: digest.html });
-      if (result.error) sendError = result.error.message ?? "Resend error";
-    } else {
-      sendError = "RESEND_API_KEY not set (dev mode).";
+    // who is sending
+    const { data: meRes, error: meErr } = await sb.auth.admin.getUserById(userId);
+    if (meErr || !meRes?.user?.email) {
+      return NextResponse.json({ error: "Cannot resolve sender email" }, { status: 400 });
     }
-    const devNotice = sendError ? "In dev/test mode, Resend may restrict recipients; check your verified sender/domain." : null;
-    return NextResponse.json({ ok: true, scope: "me", to: ownerEmail, devNotice, sendError });
+    const ownerEmail = meRes.user.email as string;
+
+    // agreements for digest
+    const { data: agreements, error: aErr } = await sb
+      .from("agreements")
+      .select("vendor,title,effective_on,end_on,auto_renews,notice_days")
+      .eq("user_id", userId);
+
+    if (aErr) return NextResponse.json({ error: aErr.message }, { status: 500 });
+
+    const todayISO = toISO(new Date());
+    const subjectDigest = `ContractHub digest — ${todayISO}`;
+
+    if (scope === "me") {
+      const html = digestHtml({ appUrl, rows: agreements ?? [] });
+      const res = await sendEmail({ to: ownerEmail, subject: subjectDigest, html });
+      return NextResponse.json({ ok: true, sent: [{ to: ownerEmail, id: res?.messageId ?? null }] });
+    }
+
+    // scope === "team": include BOTH active and invited (exclude removed)
+    const { data: members, error: mErr } = await sb
+      .from("team_members")
+      .select("email,status")
+      .eq("owner_user_id", userId)
+      .neq("status", "removed");
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+
+    const everyone = (members ?? []).map((m) => m.email);
+    const invitedSet = new Set((members ?? []).filter((m) => m.status === "invited").map((m) => m.email));
+
+    const sends = await Promise.allSettled(
+      everyone.map((to) =>
+        sendEmail({
+          to,
+          subject: subjectDigest,
+          html: digestHtml({
+            appUrl,
+            rows: agreements ?? [],
+            invitedBanner: invitedSet.has(to) ? { ownerEmail } : null,
+          }),
+        })
+      )
+    );
+
+    const results = sends.map((r, i) =>
+      r.status === "fulfilled"
+        ? { to: everyone[i], ok: true }
+        : { to: everyone[i], ok: false, error: (r as PromiseRejectedResult).reason?.message ?? "send failed" }
+    );
+
+    return NextResponse.json({ ok: true, results });
+  } catch (err: any) {
+    console.error("/api/team/send error:", err);
+    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
   }
-
-  // scope === "team"
-  const { data: members, error } = await sb
-    .from("team_members")
-    .select("*")
-    .eq("owner_user_id", ownerUserId)
-    .order("created_at", { ascending: true });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const inviteTpl = buildInviteHtml(ownerEmail);
-  const results: Array<{ email: string; type: "digest" | "invite"; ok: boolean; devNotice?: string; error?: string }> = [];
-
-  for (const m of members ?? []) {
-    const isActive = m.status === "active"; // you can mark active later when they accept
-    const to = m.email;
-
-    // In local dev without a verified domain, Resend will only allow your own address.
-    let devNotice: string | undefined;
-    let err: string | undefined;
-    if (!resend) {
-      devNotice = "RESEND_API_KEY not set (dev mode).";
-      results.push({ email: to, type: isActive ? "digest" : "invite", ok: true, devNotice });
-      continue;
-    }
-
-    const payload = isActive
-      ? { from: fromEmail, to, subject: digest.subject, html: digest.html }
-      : { from: fromEmail, to, subject: inviteTpl.subject, html: inviteTpl.html };
-
-    const r = await resend.emails.send(payload as any);
-    if (r.error) {
-      err = r.error.message ?? "Resend error";
-      devNotice = "Resend may restrict non-verified recipients in test mode. Use your own email or verify a domain.";
-    }
-
-    results.push({ email: to, type: isActive ? "digest" : "invite", ok: !err, devNotice, error: err });
-  }
-
-  return NextResponse.json({ ok: true, scope: "team", results });
 }

@@ -9,6 +9,6 @@ export const ExtractZ = z.object({
   autoRenews: z.boolean(),
   noticeDays: z.number().int().nonnegative().default(0),
   explicitOptOutDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
-  renewalFrequencyMonths: z.number().int().nonnegative().default(12),
+  renewal_frequency_months: z.number().int().positive().nullable().optional(),
 });
 export type ExtractOutput = z.infer<typeof ExtractZ>;

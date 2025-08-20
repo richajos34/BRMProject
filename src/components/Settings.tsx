@@ -1,135 +1,165 @@
-import { useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "./ui/card";
+"use client";
+
+import { useEffect, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
 import { Separator } from "./ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Badge } from "./ui/badge";
-import {
-  Bell,
-  Mail,
-  Smartphone,
-  Clock,
-  Save,
-  Trash2,
-} from "lucide-react";
+import { Bell, Mail, Smartphone, Clock, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { getUserIdClient } from "@/lib/getUserClient";
 
+type ReminderType = "email" | "sms" | "push";
 interface NotificationSetting {
-  id: string;
-  type: "email" | "sms" | "push";
+  id?: string;                // local id (not required for save because we replace)
+  type: ReminderType;
   days: number;
   enabled: boolean;
 }
 
 export function Settings() {
+  // channel toggles
   const [emailReminders, setEmailReminders] = useState(true);
   const [smsReminders, setSmsReminders] = useState(false);
-  const [pushNotifications, setPushNotifications] =
-    useState(true);
+  const [pushNotifications, setPushNotifications] = useState(true);
 
-  const [defaultReminders, setDefaultReminders] = useState<
-    NotificationSetting[]
-  >([
-    { id: "1", type: "email", days: 90, enabled: true },
-    { id: "2", type: "email", days: 30, enabled: true },
-    { id: "3", type: "email", days: 7, enabled: true },
-    { id: "4", type: "sms", days: 7, enabled: false },
-  ]);
+  // defaults list
+  const [defaultReminders, setDefaultReminders] = useState<NotificationSetting[]>([]);
 
+  // email fields
+  const [notifEmail, setNotifEmail] = useState<string>("");
+  const [ccEmails, setCcEmails] = useState<string>("");
+
+  // add form
   const [newReminderDays, setNewReminderDays] = useState("");
-  const [newReminderType, setNewReminderType] = useState<
-    "email" | "sms" | "push"
-  >("email");
+  const [newReminderType, setNewReminderType] = useState<ReminderType>("email");
 
-  const handleSaveSettings = () => {
-    // Handle save logic here
-    toast.success("Settings saved successfully");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // --- load settings ---
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        const uid = await getUserIdClient();
+        const res = await fetch("/api/settings", {
+          headers: { "x-user-id": uid || "" },
+          cache: "no-store",
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || "Failed to load settings");
+
+        const s = json.settings;
+        setEmailReminders(!!s.emailReminders);
+        setSmsReminders(!!s.smsReminders);
+        setPushNotifications(!!s.pushNotifications);
+        setNotifEmail(s.notifEmail || "");
+        setCcEmails(s.ccEmails || "");
+        setDefaultReminders(
+          (s.reminders || []).map((r: any) => ({
+            id: crypto.randomUUID(),
+            type: r.type,
+            days: r.days,
+            enabled: r.enabled,
+          }))
+        );
+      } catch (e: any) {
+        toast.error(e?.message || "Failed to load settings");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  // --- save settings ---
+  const handleSaveSettings = async () => {
+    try {
+      setSaving(true);
+      const uid = await getUserIdClient();
+      const payload = {
+        emailReminders,
+        smsReminders,
+        pushNotifications,
+        notifEmail: notifEmail || null,
+        ccEmails: ccEmails || null,
+        reminders: defaultReminders.map(r => ({
+          type: r.type,
+          days: r.days,
+          enabled: r.enabled,
+        })),
+      };
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": uid || "",
+        },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Failed to save settings");
+      toast.success("Settings saved successfully");
+    } catch (e: any) {
+      toast.error(e?.message || "Save failed");
+    } finally {
+      setSaving(false);
+    }
   };
 
+  // --- add/remove/toggle reminders (local state) ---
   const handleAddReminder = () => {
-    if (!newReminderDays || parseInt(newReminderDays) <= 0) {
+    const n = parseInt(newReminderDays, 10);
+    if (!n || n <= 0) {
       toast.error("Please enter a valid number of days");
       return;
     }
-
     const newReminder: NotificationSetting = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       type: newReminderType,
-      days: parseInt(newReminderDays),
+      days: n,
       enabled: true,
     };
-
-    setDefaultReminders([...defaultReminders, newReminder]);
+    setDefaultReminders(prev => [newReminder, ...prev]);
     setNewReminderDays("");
-    toast.success("Reminder added successfully");
+    toast.success("Reminder added");
   };
 
   const handleRemoveReminder = (id: string) => {
-    setDefaultReminders(
-      defaultReminders.filter((reminder) => reminder.id !== id),
-    );
+    setDefaultReminders(prev => prev.filter(r => r.id !== id));
     toast.success("Reminder removed");
   };
 
   const handleToggleReminder = (id: string) => {
-    setDefaultReminders(
-      defaultReminders.map((reminder) =>
-        reminder.id === id
-          ? { ...reminder, enabled: !reminder.enabled }
-          : reminder,
-      ),
+    setDefaultReminders(prev =>
+      prev.map(r => (r.id === id ? { ...r, enabled: !r.enabled } : r))
     );
   };
 
-  const getNotificationIcon = (type: string) => {
+  const getNotificationIcon = (type: ReminderType) => {
     switch (type) {
-      case "email":
-        return <Mail size={16} />;
-      case "sms":
-        return <Smartphone size={16} />;
-      case "push":
-        return <Bell size={16} />;
-      default:
-        return <Bell size={16} />;
+      case "email": return <Mail size={16} />;
+      case "sms": return <Smartphone size={16} />;
+      case "push": return <Bell size={16} />;
     }
   };
-
-  const getNotificationLabel = (type: string) => {
+  const getNotificationLabel = (type: ReminderType) => {
     switch (type) {
-      case "email":
-        return "Email";
-      case "sms":
-        return "SMS";
-      case "push":
-        return "Push";
-      default:
-        return type;
+      case "email": return "Email";
+      case "sms": return "SMS";
+      case "push": return "Push";
     }
   };
 
   return (
     <div className="space-y-8 max-w-3xl">
-      {/* Page Header */}
       <div>
         <h1 className="mb-2">Settings</h1>
-        <p className="text-muted-foreground">
-          Configure your notification preferences and default
-          reminder settings
-        </p>
+        <p className="text-muted-foreground">Configure your notification preferences and default reminder settings</p>
       </div>
 
       {/* Notification Preferences */}
@@ -143,17 +173,14 @@ export function Settings() {
         <CardContent className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="email-reminders">
-                Email Reminders
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Receive contract deadline reminders via email
-              </p>
+              <Label htmlFor="email-reminders">Email Reminders</Label>
+              <p className="text-sm text-muted-foreground">Receive contract deadline reminders via email</p>
             </div>
             <Switch
               id="email-reminders"
               checked={emailReminders}
               onCheckedChange={setEmailReminders}
+              disabled={loading}
             />
           </div>
 
@@ -161,17 +188,14 @@ export function Settings() {
 
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="sms-reminders">
-                SMS Reminders
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Receive urgent reminders via text message
-              </p>
+              <Label htmlFor="sms-reminders">SMS Reminders</Label>
+              <p className="text-sm text-muted-foreground">Receive urgent reminders via text message</p>
             </div>
             <Switch
               id="sms-reminders"
               checked={smsReminders}
               onCheckedChange={setSmsReminders}
+              disabled={loading}
             />
           </div>
 
@@ -179,18 +203,14 @@ export function Settings() {
 
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="push-notifications">
-                Push Notifications
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Receive browser notifications for important
-                deadlines
-              </p>
+              <Label htmlFor="push-notifications">Push Notifications</Label>
+              <p className="text-sm text-muted-foreground">Receive browser notifications for important deadlines</p>
             </div>
             <Switch
               id="push-notifications"
               checked={pushNotifications}
               onCheckedChange={setPushNotifications}
+              disabled={loading}
             />
           </div>
         </CardContent>
@@ -206,52 +226,37 @@ export function Settings() {
         </CardHeader>
         <CardContent className="space-y-6">
           <p className="text-sm text-muted-foreground">
-            Set default reminder schedules that will be applied
-            to new contracts. You can customize these for
-            individual contracts later.
+            Set default reminder schedules that will be applied to new contracts. You can customize these for individual contracts later.
           </p>
 
-          {/* Existing Reminders */}
           <div className="space-y-3">
             {defaultReminders.map((reminder) => (
-              <div
-                key={reminder.id}
-                className="flex items-center justify-between p-3 border rounded-lg"
-              >
+              <div key={reminder.id} className="flex items-center justify-between p-3 border rounded-lg">
                 <div className="flex items-center gap-3">
-                  <Switch
-                    checked={reminder.enabled}
-                    onCheckedChange={() =>
-                      handleToggleReminder(reminder.id)
-                    }
-                  />
+                  <Switch checked={reminder.enabled} onCheckedChange={() => handleToggleReminder(reminder.id!)} />
                   <div className="flex items-center gap-2">
                     {getNotificationIcon(reminder.type)}
-                    <span className="font-medium">
-                      {reminder.days} days before
-                    </span>
+                    <span className="font-medium">{reminder.days} days before</span>
                   </div>
-                  <Badge variant="outline" className="text-xs">
-                    {getNotificationLabel(reminder.type)}
-                  </Badge>
+                  <Badge variant="outline" className="text-xs">{getNotificationLabel(reminder.type)}</Badge>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() =>
-                    handleRemoveReminder(reminder.id)
-                  }
+                  onClick={() => handleRemoveReminder(reminder.id!)}
                   className="h-8 w-8 text-muted-foreground hover:text-destructive"
                 >
                   <Trash2 size={16} />
                 </Button>
               </div>
             ))}
+            {defaultReminders.length === 0 && (
+              <div className="text-sm text-muted-foreground">No defaults yet. Add one below.</div>
+            )}
           </div>
 
           <Separator />
 
-          {/* Add New Reminder */}
           <div className="space-y-4">
             <Label>Add New Reminder</Label>
             <div className="flex gap-2">
@@ -259,27 +264,19 @@ export function Settings() {
                 placeholder="Days before deadline"
                 type="number"
                 value={newReminderDays}
-                onChange={(e) =>
-                  setNewReminderDays(e.target.value)
-                }
+                onChange={(e) => setNewReminderDays(e.target.value)}
                 className="flex-1"
+                disabled={loading}
               />
-              <Select
-                value={newReminderType}
-                onValueChange={(
-                  value: "email" | "sms" | "push",
-                ) => setNewReminderType(value)}
-              >
+              <Select value={newReminderType} onValueChange={(v: ReminderType) => setNewReminderType(v)}>
                 <SelectTrigger className="w-32">
-                  <SelectValue />
+                  <SelectValue placeholder="Type" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="email">Email</SelectItem>
-                  <SelectItem value="sms">SMS</SelectItem>
-                  <SelectItem value="push">Push</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={handleAddReminder}>Add</Button>
+              <Button onClick={handleAddReminder} disabled={loading}>Add</Button>
             </div>
           </div>
         </CardContent>
@@ -295,43 +292,41 @@ export function Settings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="notification-email">
-              Notification Email Address
-            </Label>
+            <Label htmlFor="notification-email">Notification Email Address</Label>
             <Input
               id="notification-email"
               type="email"
               placeholder="notifications@yourcompany.com"
               className="mt-1"
+              value={notifEmail}
+              onChange={(e) => setNotifEmail(e.target.value)}
+              disabled={loading}
             />
             <p className="text-sm text-muted-foreground mt-1">
-              All contract reminders will be sent to this email
-              address
+              All contract reminders will be sent to this email address
             </p>
           </div>
 
           <div>
-            <Label htmlFor="cc-emails">
-              CC Additional Recipients
-            </Label>
+            <Label htmlFor="cc-emails">CC Additional Recipients</Label>
             <Input
               id="cc-emails"
-              type="email"
+              type="text"
               placeholder="legal@yourcompany.com, procurement@yourcompany.com"
               className="mt-1"
+              value={ccEmails}
+              onChange={(e) => setCcEmails(e.target.value)}
+              disabled={loading}
             />
-            <p className="text-sm text-muted-foreground mt-1">
-              Separate multiple email addresses with commas
-            </p>
+            <p className="text-sm text-muted-foreground mt-1">Separate multiple emails with commas</p>
           </div>
         </CardContent>
       </Card>
 
-      {/* Save Button */}
       <div className="flex justify-end">
-        <Button onClick={handleSaveSettings} className="gap-2">
+        <Button onClick={handleSaveSettings} className="gap-2" disabled={saving || loading}>
           <Save size={16} />
-          Save Settings
+          {saving ? "Saving…" : "Save Settings"}
         </Button>
       </div>
     </div>

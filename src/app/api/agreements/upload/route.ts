@@ -126,16 +126,34 @@ export async function POST(req: Request) {
     const extracted = ExtractZ.parse(JSON.parse(raw));
 
     // 5) map to DB payload and validate with AgreementZ
+    const autoRenews = !!extracted.autoRenews;
+
+    // Model may send either camelCase or snake_case; support both
+    const modelFreq =
+      (extracted as any).renewalFrequencyMonths ??
+      (extracted as any).renewal_frequency_months;
+
+    let finalRenewalFreq: number | null;
+    if (autoRenews) {
+      // If it auto-renews, use model value when valid; otherwise default to 12
+      const n = typeof modelFreq === "number" && Number.isFinite(modelFreq) ? modelFreq : null;
+      finalRenewalFreq = n && n > 0 ? n : 12;
+    } else {
+      // If it does NOT auto-renew, frequency must be null
+      finalRenewalFreq = null; // <-- if AgreementZ requires a number, use 0 instead
+    }
+
+    // 5) map to DB payload and validate with AgreementZ
     const payload = {
       vendor: extracted.vendor,
       title: extracted.agreementTitle,
       effectiveDate: extracted.effectiveDate,
       termLengthMonths: extracted.termLengthMonths ?? 0,
       endDate: extracted.endDate,
-      autoRenews: extracted.autoRenews,
+      autoRenews,
       noticeDays: extracted.noticeDays ?? 0,
       explicitOptOutDate: extracted.explicitOptOutDate,
-      renewalFrequencyMonths: extracted.renewalFrequencyMonths ?? 12,
+      renewalFrequencyMonths: finalRenewalFreq,   // <-- use guarded value
       sourceFileName: file.name,
       sourceFilePath: path,
       modelName: model,

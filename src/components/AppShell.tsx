@@ -50,7 +50,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   const nav = [
-    { href: "/", label: "Dashboard", icon: Home },
+    { href: "/dashboard", label: "Dashboard", icon: Home },
     { href: "/calendar", label: "Calendar", icon: CalendarIcon },
     { href: "/documents", label: "Documents", icon: FileText },
     { href: "/team", label: "Teams", icon: People },

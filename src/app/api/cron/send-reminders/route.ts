@@ -1,7 +1,7 @@
 // src/app/api/cron/send-reminders/route.ts
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseServer";
-import { Resend } from "resend";
+import { sendEmail } from "@/lib/mailer";
 
 // ---- tiny date helpers ----
 const toISO = (d: Date) =>
@@ -19,8 +19,7 @@ const addMonths = (dt: Date, months: number) => {
   const d = new Date(dt.getTime());
   const day = d.getDate();
   d.setMonth(d.getMonth() + months);
-  // allow JS auto-adjust
-  if (d.getDate() !== day) { /* ignore */ }
+  if (d.getDate() !== day) { /* allow JS auto-adjust */ }
   return d;
 };
 
@@ -49,30 +48,31 @@ export async function GET(req: Request) { return handler(req); }
 export async function POST(req: Request) { return handler(req); }
 
 async function handler(req: Request) {
-  // Simple auth: shared secret header
+  // Protect with a shared secret header (works for cron or manual curl)
   const secretHeader = req.headers.get("x-cron-secret");
   if (!process.env.CRON_SECRET || secretHeader !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const sb = supabaseAdmin();
-  const resendKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.EMAIL_FROM;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const from = process.env.EMAIL_FROM || "ContractHub Dev <no-reply@localhost.test>";
 
-  // Optional: ?dryRun=1 to preview without sending
+  // Optional overrides: ?dryRun=1 and ?date=YYYY-MM-DD
   const url = new URL(req.url);
   const dryRun = url.searchParams.get("dryRun") === "1";
   const asOf = url.searchParams.get("date");
   const today = asOf ? new Date(asOf) : new Date();
 
-  // 1) Pull ALL agreements that are assigned to a user
+  // Pull all agreements that belong to a user
   const { data: agreements, error: aErr } = await sb
     .from("agreements")
     .select("id,user_id,vendor,title,effective_on,end_on,auto_renews,notice_days,renewal_frequency_months")
     .not("user_id", "is", null);
 
-  if (aErr) return NextResponse.json({ error: aErr.message }, { status: 500 });
+  if (aErr) {
+    return NextResponse.json({ error: aErr.message }, { status: 500 });
+  }
 
   // Group by user
   const byUser = (agreements ?? []).reduce<Record<string, AgreementRow[]>>((acc, a) => {
@@ -81,17 +81,14 @@ async function handler(req: Request) {
     return acc;
   }, {});
 
-  // Nothing to do
   if (Object.keys(byUser).length === 0) {
     return NextResponse.json({ ok: true, sent: 0, message: "No agreements found" });
   }
 
-  const resend = resendKey ? new Resend(resendKey) : null;
   const results: Array<{ user_id: string; to?: string; sent: number }> = [];
 
-  // For each user with agreements, send one daily digest email
   for (const [user_id, rows] of Object.entries(byUser)) {
-    // Look up user email (service role key can use Admin API)
+    // Get recipient email via Admin API (service role)
     const { data: ures, error: uerr } = await sb.auth.admin.getUserById(user_id);
     if (uerr || !ures?.user?.email) {
       results.push({ user_id, to: undefined, sent: 0 });
@@ -99,14 +96,18 @@ async function handler(req: Request) {
     }
     const to = ures.user.email as string;
 
-    // Build HTML table of agreements
+    // Build email rows
     const htmlRows = rows
-      .sort((a, b) => (a.vendor.localeCompare(b.vendor)))
+      .sort((a, b) => a.vendor.localeCompare(b.vendor))
       .map((a) => {
-        const effective = a.effective_on ? new Date(a.effective_on).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "-";
-        const end = a.end_on ? new Date(a.end_on).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "-";
+        const effective = a.effective_on
+          ? new Date(a.effective_on).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+          : "-";
+        const end = a.end_on
+          ? new Date(a.end_on).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+          : "-";
 
-        // Optional: compute next renewal date (if auto_renews && end_on)
+        // compute next renewal (if auto-renews)
         let nextRenewalStr = "-";
         let daysUntilStr = "-";
         if (a.auto_renews && a.end_on) {
@@ -166,52 +167,51 @@ async function handler(req: Request) {
       </div>
     `;
 
-    const from = process.env.EMAIL_FROM || "ContractHub <onboarding@resend.dev>";
-    if (!dryRun && resendKey) {
-        const resend = new Resend(resendKey);   // <- typed as Resend (not nullable)
-        try {
-          const sendResult = await resend.emails.send({
-            from,
-            to : "richajos24@gmail.com",
-            subject,
-            html,
-          });
-          console.log("[resend] sendResult:", sendResult);
-        } catch (err) {
-          console.error("[resend] send error:", err);
-        }
-      } else {
-        console.log("[resend] skipping send (dryRun or no RESEND_API_KEY)");
-      }
-      
-
+    // Send via Mailtrap (nodemailer) unless dryRun
+    if (!dryRun) {
       try {
-        const payload = rows.map(a => ({
-          user_id,
-          agreement_id: a.id,          // per-agreement logging
-          event_kind: "DAILY_DIGEST",  // make sure your CHECK allows this value
-          occurs_on: toISO(today),     // the run date (yyyy-mm-dd)
-          offset_days: 0               // allowed by your CHECK (0,30,60,90)
-        }));
-      
-        const { data: insRows, error: insErr } = await sb
-          .from("email_reminders_sent")
-          .upsert(payload, {
-            onConflict: "user_id,agreement_id,event_kind,occurs_on",
-            ignoreDuplicates: true, // safe no-op if the row already exists
-          })
-          .select("*");
-      
-        if (insErr) {
-          console.error("[cron] insert email_reminders_sent error:", insErr.message);
-        } else {
-          console.log("[cron] logged digest rows:", insRows?.length ?? 0);
-        }
-      } catch (e: any) {
-        console.error("[cron] insert catch:", e?.message || e);
+        const info = await sendEmail({
+          to,
+          subject,
+          html,
+          text: html.replace(/<[^>]+>/g, " "),
+        });
+        console.log("[mail] sent", { to, messageId: info.messageId });
+      } catch (err) {
+        console.error("[mail] send error:", err);
       }
+    } else {
+      console.log("[mail] dryRun — skipped send to", to);
+    }
 
-    results.push({ user_id, to, sent: 1 });
+    // Log to email_reminders_sent (idempotent)
+    try {
+      const payload = rows.map(a => ({
+        user_id,
+        agreement_id: a.id,
+        event_kind: "DAILY_DIGEST", // make sure your CHECK includes this
+        occurs_on: toISO(today),
+        offset_days: 0,              // allowed by your CHECK (0,30,60,90)
+      }));
+
+      const { data: insRows, error: insErr } = await sb
+        .from("email_reminders_sent")
+        .upsert(payload, {
+          onConflict: "user_id,agreement_id,event_kind,occurs_on",
+          ignoreDuplicates: true,
+        })
+        .select("*");
+
+      if (insErr) {
+        console.error("[cron] insert email_reminders_sent error:", insErr.message);
+      } else {
+        console.log("[cron] logged digest rows:", insRows?.length ?? 0);
+      }
+    } catch (e: any) {
+      console.error("[cron] insert catch:", e?.message || e);
+    }
+
+    results.push({ user_id, to, sent: dryRun ? 0 : 1 });
   }
 
   return NextResponse.json({ ok: true, dryRun, date: toISO(today), results });
